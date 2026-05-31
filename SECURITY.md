@@ -1,4 +1,4 @@
-# Security Policy 🔒
+# Sentinal Security Policy
 
 ## Supported Versions
 
