@@ -1,0 +1,113 @@
+{
+  "database_name": "Sentinel Mock Vulnerability Database",
+  "database_version": "0.1.0",
+  "description": "Built-in mock vulnerability database for Sentinel security scanning. Contains known unsafe package versions for demonstration purposes.",
+  "updated": "2026-05-31",
+  "vulnerabilities": [
+    {
+      "package": "django",
+      "versions": ["<3.2.0", ">=4.0a1,<4.0.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-23969",
+      "description": "SQL injection vulnerability in Django ORM when using crafted column aliases"
+    },
+    {
+      "package": "flask",
+      "versions": ["<2.3.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-25577",
+      "description": "Cross-site scripting vulnerability in Flask debug view"
+    },
+    {
+      "package": "requests",
+      "versions": ["<2.31.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-32681",
+      "description": "Information disclosure via improper handling of proxy credentials"
+    },
+    {
+      "package": "pyyaml",
+      "versions": ["<5.4.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2020-14343",
+      "description": "Arbitrary code execution via unsafe yaml.load()"
+    },
+    {
+      "package": "cryptography",
+      "versions": ["<39.0.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-23931",
+      "description": "Buffer overflow vulnerability in cryptography library"
+    },
+    {
+      "package": "pillow",
+      "versions": ["<9.5.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-26965",
+      "description": "Remote code execution vulnerability in Pillow image processing"
+    },
+    {
+      "package": "jinja2",
+      "versions": ["<3.1.2"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-25577",
+      "description": "Cross-site scripting vulnerability in Jinja2 template rendering"
+    },
+    {
+      "package": "numpy",
+      "versions": ["<1.24.0"],
+      "severity": "LOW",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Buffer overflow in ndarray element access"
+    },
+    {
+      "package": "ansible",
+      "versions": ["<2.14.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Information disclosure via improper handling of sensitive data"
+    },
+    {
+      "package": "boto3",
+      "versions": ["<1.26.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Insufficient validation of AWS credentials"
+    },
+    {
+      "package": "paramiko",
+      "versions": ["<2.12.0"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Authentication bypass vulnerability in SSH handshake"
+    },
+    {
+      "package": "redis",
+      "versions": ["<4.5.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Denial of service via malformed request"
+    },
+    {
+      "package": "celery",
+      "versions": ["<5.2.7"],
+      "severity": "HIGH",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Remote code execution via crafted task message"
+    },
+    {
+      "package": "scrapy",
+      "versions": ["<2.8.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-XXXXX",
+      "description": "Server-side request forgery vulnerability"
+    },
+    {
+      "package": "tornado",
+      "versions": ["<6.3.0"],
+      "severity": "MEDIUM",
+      "cve": "CVE-2023-XXXXX",
+      "description": "HTTP request smuggling vulnerability"
+    }
+  ]
+}

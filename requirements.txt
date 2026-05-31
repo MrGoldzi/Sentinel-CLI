@@ -1,0 +1,5 @@
+# Sentinel dependencies
+# These are required for running Sentinel (SAST + DAST scanning)
+pathspec>=0.10.0
+packaging>=21.0
+tqdm>=4.60.0
