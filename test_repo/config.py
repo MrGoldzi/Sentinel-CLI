@@ -1,5 +1,4 @@
 """Configuration file with deliberate secrets exposed for testing Sentinel."""
-
 import os
 
 # AWS Credentials (test values - not real)
@@ -9,6 +8,9 @@ import os
 # AWS Credentials (test placeholders - not real credentials)
 AWS_ACCESS_KEY_ID = "SENTINEL_TEST_AWS_ACCESS_KEY_ID_PLACEHOLDER"
 AWS_SECRET_ACCESS_KEY = "SENTINEL_TEST_AWS_SECRET_KEY_PLACEHOLDER"
+
+#General Secret Key for Vaiablity Testing 
+GENERAL_SECRET_KEY = "SENTINAL_TEST_GENERAL_SECRET_KEY"
 
 # API Keys
 API_KEY = "SENTINEL_TEST_API_KEY_PLACEHOLDER"

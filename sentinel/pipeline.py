@@ -39,6 +39,10 @@ def scan_repository(
     repo_root: str,
     severity_threshold: Severity = Severity.HIGH,
     show_progress: bool = False,
+    scan_all: bool = False,
+    no_gitignore: bool = False,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None,
 ) -> ScanResult:
     """Run the complete SAST scanning pipeline using the ScannerEngine.
 
@@ -46,6 +50,10 @@ def scan_repository(
         repo_root: Root path of the repository to scan.
         severity_threshold: Minimum severity to trigger BLOCK.
         show_progress: If True, display a progress bar.
+        scan_all: If True, scan ALL files (ignore binary/source filtering).
+        no_gitignore: If True, include .gitignored files in scan.
+        exclude_patterns: Optional gitignore-style exclude patterns.
+        include_patterns: Optional gitignore-style include patterns.
 
     Returns:
         A ScanResult containing all findings and metadata.
@@ -54,6 +62,10 @@ def scan_repository(
         repo_root=repo_root,
         severity_threshold=severity_threshold,
         show_progress=show_progress,
+        scan_all=scan_all,
+        no_gitignore=no_gitignore,
+        exclude_patterns=exclude_patterns,
+        include_patterns=include_patterns,
     )
 
 

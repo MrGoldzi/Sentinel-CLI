@@ -47,7 +47,7 @@ Sentinel is ideal for:
 ## Quick Start
 
 ```bash
-# Install from source
+# Install from PyPI
 pip install sentinel-security
 
 # Scan the included test repository
@@ -81,7 +81,32 @@ sentinel dast https://example.com
 git clone https://github.com/your-org/sentinel.git
 cd sentinel
 pip install -r requirements.txt
+```
+
+### How to run Sentinel
+
+After installation, use the `sentinel` command directly:
+
+```bash
+sentinel scan /path/to/repo
+sentinel dast https://example.com
+```
+
+If you're working from the cloned repo **without installing**, use one of these:
+
+```bash
+# Run as a Python module
+python -m sentinel scan /path/to/repo
+
+# Or use the wrapper script
 python cli.py scan /path/to/repo
+```
+
+To make `sentinel` available as a system command from source, install in editable mode:
+
+```bash
+pip install -e .
+sentinel scan /path/to/repo   # now works from anywhere
 ```
 
 ### Dependencies
@@ -96,12 +121,30 @@ Sentinel uses **3 lightweight packages**:
 
 No heavy frameworks (Docker, npm, Node.js) required.
 
+### `sentinel` vs `python -m sentinel`
+
+If you installed via `pip install sentinel-security` or `pip install -e .`, use:
+
+```bash
+sentinel scan /path/to/repo
+```
+
+If you're running from a cloned repo without installing, use:
+
+```bash
+python -m sentinel scan /path/to/repo
+# or
+python cli.py scan /path/to/repo
+```
+
+All CLI flags and commands work identically either way.
+
 ## CLI Reference
 
 ### `scan` command
 
 ```bash
-python cli.py scan <path> [options]
+sentinel scan <path> [options]
 ```
 
 **Arguments:**
@@ -118,6 +161,11 @@ python cli.py scan <path> [options]
 | `--output-file FILE`, `-o FILE` | Write output to a file. Combine with `--output` or use standalone. |
 | `--json [FILE]` | *(Legacy)* Output as JSON. Use `--output json` instead. |
 | `--sarif [FILE]` | *(Legacy)* Output as SARIF. Use `--output sarif` instead. |
+| `--all`, `--scan-all` | Scan **ALL** files — no binary/source filtering, no `.gitignore` respect, no directory skipping. Maximum coverage mode. |
+| `--no-gitignore` | Include `.gitignored` files in the scan (e.g., `.env` files, credential dumps). |
+| `--stats` | Show detailed scan statistics: file type breakdown, per-scanner timing, bar charts. |
+| `--exclude PATTERNS` | Comma-separated gitignore-style patterns to exclude (e.g. `--exclude "*.test.py,docs/*"`). |
+| `--include PATTERNS` | Comma-separated gitignore-style patterns to only scan (e.g. `--include "*.py,*.js,*.yaml"`). |
 | `--verbose`, `-v` | Show detailed output during scanning |
 | `--severity-threshold {LOW,MEDIUM,HIGH}` | Minimum severity that triggers BLOCK. Default: HIGH. |
 | `--help` | Show help message |
@@ -125,7 +173,7 @@ python cli.py scan <path> [options]
 ### `--version`
 
 ```bash
-python cli.py --version
+sentinel --version
 # > Sentinel v0.2.0
 ```
 
@@ -139,7 +187,7 @@ python cli.py --version
 
 ```bash
 # Exit codes work naturally in CI/CD pipelines
-python cli.py scan . --severity-threshold MEDIUM
+sentinel scan . --severity-threshold MEDIUM
 if [ $? -eq 2 ]; then
   echo "Security issues found — blocking build"
   exit 1
@@ -151,7 +199,7 @@ fi
 ### Human-readable (default)
 
 ```bash
-python cli.py scan test_repo
+sentinel scan test_repo
 ```
 
 Displays a color-coded summary with findings grouped by file, severity badges, and line references.
@@ -159,7 +207,7 @@ Displays a color-coded summary with findings grouped by file, severity badges, a
 ### JSON
 
 ```bash
-python cli.py scan test_repo --output json -o report.json
+sentinel scan test_repo --output json -o report.json
 ```
 
 Machine-readable JSON with verdict, total findings, file list, and all finding details.
@@ -194,7 +242,7 @@ Machine-readable JSON with verdict, total findings, file list, and all finding d
 ### SARIF v2.1.0
 
 ```bash
-python cli.py scan test_repo --output sarif -o report.sarif
+sentinel scan test_repo --output sarif -o report.sarif
 ```
 
 Industry-standard format compatible with [GitHub Advanced Security](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning), Azure DevOps, and other SARIF-compatible tools.
@@ -269,7 +317,7 @@ The SARIF output has been validated against the **official OASIS SARIF v2.1.0 JS
 
 ```bash
 # Validate SARIF output yourself
-python cli.py scan test_repo --output sarif -o report.sarif
+sentinel scan test_repo --output sarif -o report.sarif
 python scripts/validate_sarif.py report.sarif
 # > ✅ SARIF output is valid against the official schema.
 ```
@@ -279,9 +327,10 @@ python scripts/validate_sarif.py report.sarif
 ### Basic scan
 
 ```bash
-$ python cli.py scan test_repo
+$ sentinel scan test_repo
 
 🔍 Sentinel v0.2.0 - Scanning: /path/to/test_repo
+   Threshold: HIGH
    This may take a moment...
 
 ═══════════════════════════════════════
@@ -291,21 +340,34 @@ $ python cli.py scan test_repo
 Summary:
   Files scanned:     4
   Findings found:    30
+  Severity threshold: [HIGH]
   Scan time:         12ms
+  File types:        .py: 2, .txt: 1, .yml: 1
 
 Findings by severity:
   14 HIGH
   9 MEDIUM
   7 LOW
 
+Findings by type:
+  🔑 Secrets: 10
+  ⚠️ Static Analysis: 18
+  📦 Dependencies: 2
+
 Detailed findings:
 
   📄 app.py
-    [HIGH] Use of eval() detected. eval() can execute arbitrary code... line 9 SAF-EVAL
+    [HIGH] ⚠️ Use of eval() detected... line 9 SAF-EVAL
            └─→ result = eval(user_input)
+           method: regex
            confidence: 100%
+           fix: Replace eval() with safer alternatives
 
-... (findings continue)
+  📄 config.py
+    [HIGH] 🔑 AWS Access Key ID detected... line 12 SEC-aws-access-key
+           └─→ AWS_ACCESS_KEY_ID = "AKIA..."
+           method: regex
+           confidence: 90%
 
 ────────────────────────────────────────
   Verdict: BLOCK
@@ -313,14 +375,44 @@ Detailed findings:
 ────────────────────────────────────────
 ```
 
+### Scanning all files (full coverage)
+
+By default, Sentinel skips binary files, common dependency directories (`node_modules`, `.venv`), and `.gitignored` files. Use `--all` to scan **every** file:
+
+```bash
+# Scan everything — binaries, node_modules, .git, the works
+sentinel scan /path/to/repo --all
+
+# Include .gitignored files but still skip binaries/deps
+sentinel scan /path/to/repo --no-gitignore
+
+# Only scan specific file types
+sentinel scan /path/to/repo --include "*.py,*.yaml,*.env"
+
+# Exclude test files from scanning
+sentinel scan /path/to/repo --exclude "tests/*,docs/*"
+```
+
+### Viewing detailed scan statistics
+
+```bash
+# Show file type breakdown, per-scanner timing, and histograms
+sentinel scan /path/to/repo --stats
+```
+
+Output includes:
+- File extension distribution with bar charts
+- Per-scanner timing breakdown (file discovery, dependency scan, parallel scan)
+- Findings split by issue type (secrets, static analysis, dependencies)
+
 ### Changing the severity threshold
 
 ```bash
 # Stricter: any finding (even LOW) causes BLOCK
-python cli.py scan test_repo --severity-threshold LOW
+sentinel scan test_repo --severity-threshold LOW
 
 # Default: only HIGH findings cause BLOCK
-python cli.py scan test_repo
+sentinel scan test_repo
 ```
 
 ### CI/CD integration
@@ -345,11 +437,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
+      - name: Install Sentinel
+        run: pip install sentinel-security
       - name: Run Sentinel
         id: sentinel
         continue-on-error: true
         run: |
-          python cli.py scan . --output sarif -o sentinel-results.sarif --severity-threshold MEDIUM || exit_code=$?
+          sentinel scan . --output sarif -o sentinel-results.sarif --severity-threshold MEDIUM || exit_code=$?
           echo "exit_code=${exit_code:-0}" >> "$GITHUB_OUTPUT"
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
@@ -366,7 +460,7 @@ Findings appear under **Security > Code scanning** in your repository.
 #### Generic CI
 
 ```bash
-python cli.py scan . --output json -o report.json --severity-threshold MEDIUM
+sentinel scan . --output json -o report.json --severity-threshold MEDIUM
 exit_code=$?
 
 case $exit_code in
@@ -480,7 +574,7 @@ cd sentinel
 python -m unittest discover tests -v
 
 # Make your changes, then validate SARIF output
-python cli.py scan test_repo --output sarif -o /tmp/sarif_out.json
+python -m sentinel scan test_repo --output sarif -o /tmp/sarif_out.json
 python scripts/validate_sarif.py /tmp/sarif_out.json
 ```
 
@@ -570,10 +664,11 @@ sentinel/
 - **Regex-based secrets scanning** — May produce false positives and false negatives
 - **DAST is inference-based** — Detects vulnerabilities through observation, not exploitation; may miss some issues
 - **Mock vulnerability database** — Not a comprehensive CVE database; use for testing/demo
-- **No binary file analysis** — Text files only
 - **Fully offline** — No network calls by design
 - **Limited language support** — Static analysis focuses primarily on Python patterns
 - **Basic Pipfile support** — Pipfile parsing is simplified
+- **Binary file scanning via `--all`** — Binary files can contain secrets, but snippets may appear garbled
+  (use `--all` to scan binaries, but expect less readable output)
 
 ## Related Projects
 

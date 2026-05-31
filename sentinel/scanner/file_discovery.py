@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import pathspec
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 
 # Directories always excluded regardless of .gitignore
@@ -56,6 +56,9 @@ TEXT_EXTS: Set[str] = SOURCE_EXTS | {
 }
 
 
+_DEFAULT_SPEC = pathspec.PathSpec.from_lines("gitwildmatch", [])
+
+
 def _load_gitignore(repo_root: str) -> pathspec.PathSpec:
     """Load .gitignore patterns from the repository root.
 
@@ -67,7 +70,14 @@ def _load_gitignore(repo_root: str) -> pathspec.PathSpec:
             spec = pathspec.PathSpec.from_lines("gitwildmatch", f)
         return spec
     except (FileNotFoundError, IOError, OSError):
-        return pathspec.PathSpec.from_lines("gitwildmatch", [])
+        return _DEFAULT_SPEC
+
+
+def _load_pattern_spec(patterns: List[str]) -> pathspec.PathSpec:
+    """Build a PathSpec from a list of gitignore-style patterns."""
+    if not patterns:
+        return _DEFAULT_SPEC
+    return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
 
 
 def is_binary_file(file_path: str) -> bool:
@@ -104,6 +114,10 @@ def discover_files(
     repo_root: str,
     include_dirs: bool = False,
     gitignore_aware: bool = True,
+    scan_all: bool = False,
+    include_gitignored: bool = True,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None,
 ) -> List[str]:
     """Discover all scannable files in a repository.
 
@@ -111,11 +125,26 @@ def discover_files(
         repo_root: Root path of the repository.
         include_dirs: If True, also return discovered directories (for progress tracking).
         gitignore_aware: If True, respect .gitignore patterns (default: True).
+        scan_all: If True, scan ALL files — no binary/source filtering, no dir skipping.
+        include_gitignored: If True (default), include files even if they match .gitignore.
+        exclude_patterns: Optional list of gitignore-style patterns to exclude.
+        include_patterns: Optional list of gitignore-style patterns to include (only these).
 
     Returns:
         A list of file paths relative to repo_root that should be scanned.
     """
-    gitignore_spec = _load_gitignore(repo_root) if gitignore_aware else pathspec.PathSpec.from_lines("gitwildmatch", [])
+    # When scan_all is set, scan everything — no filtering
+    if scan_all:
+        return _discover_all_files(repo_root, include_dirs, exclude_patterns, include_patterns)
+
+    # Build exclude/include specs
+    exclude_spec = _load_pattern_spec(exclude_patterns or [])
+    include_spec = _load_pattern_spec(include_patterns or [])
+    has_include_patterns = bool(include_patterns)
+    has_exclude_patterns = bool(exclude_patterns)
+
+    should_check_gitignore = gitignore_aware and not include_gitignored
+    gitignore_spec = _load_gitignore(repo_root) if should_check_gitignore else _DEFAULT_SPEC
 
     files: List[str] = []
 
@@ -134,7 +163,7 @@ def discover_files(
                 dir_rel = os.path.join(rel_root, d)
             else:
                 dir_rel = d
-            if gitignore_aware and gitignore_spec.match_file(dir_rel + "/"):
+            if should_check_gitignore and gitignore_spec.match_file(dir_rel + "/"):
                 continue
             filtered_dirs.append(d)
         dirs[:] = filtered_dirs  # modify in-place for os.walk
@@ -142,19 +171,25 @@ def discover_files(
         for filename in filenames:
             file_rel = os.path.join(rel_root, filename) if rel_root else filename
 
+            # Apply exclude/include patterns (early check before I/O)
+            if has_exclude_patterns and exclude_spec.match_file(file_rel):
+                continue
+            if has_include_patterns and not include_spec.match_file(file_rel):
+                continue
+
             # Skip by name/extension
             if should_skip_by_name(filename):
                 continue
 
             # Check gitignore
-            if gitignore_aware and gitignore_spec.match_file(file_rel):
+            if should_check_gitignore and gitignore_spec.match_file(file_rel):
                 continue
 
             # Quick binary check by extension
             _, ext = os.path.splitext(filename)
+            full_path = os.path.join(root, filename)
             if ext.lower() not in TEXT_EXTS:
                 # For unknown extensions, do a binary content check
-                full_path = os.path.join(root, filename)
                 if is_binary_file(full_path):
                     continue
 
@@ -163,9 +198,60 @@ def discover_files(
     return files
 
 
-def count_files(repo_root: str, gitignore_aware: bool = True) -> int:
+def _discover_all_files(
+    repo_root: str,
+    include_dirs: bool = False,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None,
+) -> List[str]:
+    """Discover ALL files in a repository with no filtering.
+
+    Used by `--all` / `--scan-all` flag. Returns every file including
+    binaries, dotfiles, node_modules, .git contents, etc.
+    """
+    exclude_spec = _load_pattern_spec(exclude_patterns or [])
+    include_spec = _load_pattern_spec(include_patterns or [])
+    has_include_patterns = bool(include_patterns)
+    has_exclude_patterns = bool(exclude_patterns)
+
+    files: List[str] = []
+
+    for root, dirs, filenames in os.walk(repo_root):
+        rel_root = os.path.relpath(root, repo_root)
+        if rel_root == ".":
+            rel_root = ""
+
+        for filename in filenames:
+            file_rel = os.path.join(rel_root, filename) if rel_root else filename
+
+            # Apply exclude/include patterns
+            if has_exclude_patterns and exclude_spec.match_file(file_rel):
+                continue
+            if has_include_patterns and not include_spec.match_file(file_rel):
+                continue
+
+            files.append(file_rel)
+
+    return files
+
+
+def count_files(
+    repo_root: str,
+    gitignore_aware: bool = True,
+    scan_all: bool = False,
+    include_gitignored: bool = True,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None,
+) -> int:
     """Quick count of scannable files without building the full list.
 
     Useful for progress bar initialization.
     """
-    return len(discover_files(repo_root, gitignore_aware=gitignore_aware))
+    return len(discover_files(
+        repo_root,
+        gitignore_aware=gitignore_aware,
+        scan_all=scan_all,
+        include_gitignored=include_gitignored,
+        exclude_patterns=exclude_patterns,
+        include_patterns=include_patterns,
+    ))

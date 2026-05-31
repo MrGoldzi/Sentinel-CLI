@@ -40,7 +40,7 @@ jobs:
         continue-on-error: true
         run: |
           # Run Sentinel and capture exit code (bypasses set -e from GitHub Actions)
-          python cli.py scan . --sarif sentinel-results.sarif --severity-threshold MEDIUM || exit_code=$?
+          python -m sentinel scan . --sarif sentinel-results.sarif --severity-threshold MEDIUM || exit_code=$?
           echo "exit_code=${exit_code:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Upload SARIF to GitHub Code Scanning

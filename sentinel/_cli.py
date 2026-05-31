@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import List
 
 from sentinel import __version__
 from sentinel.models import Severity
@@ -40,16 +41,21 @@ def setup_argparse() -> argparse.ArgumentParser:
         description="Sentinel - Local security scanner for Git repositories",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  sentinel scan /path/to/repo                           Scan a repository
-  sentinel scan .                                        Scan current directory
-  sentinel scan /path/to/repo --output json              Output as JSON
-  sentinel scan /path/to/repo --output json -o report.json  Save JSON report
-  sentinel scan /path/to/repo --output sarif             Output as SARIF
-  sentinel scan /path/to/repo --output sarif -o report.sarif Save SARIF report
-  sentinel scan /path/to/repo --output human             Force human-readable output
-  sentinel scan /path/to/repo --severity-threshold LOW   Stricter: any issue blocks
-  sentinel scan /path/to/repo --severity-threshold MEDIUM MEDIUM+ issues block
-  sentinel --version                                     Show version
+  sentinel scan /path/to/repo                              Scan a repository
+  sentinel scan .                                           Scan current directory
+  sentinel scan /path/to/repo --output json                Output as JSON
+  sentinel scan /path/to/repo --output json -o report.json Save JSON report
+  sentinel scan /path/to/repo --output sarif               Output as SARIF
+  sentinel scan /path/to/repo --output sarif -o report.sarif  Save SARIF report
+  sentinel scan /path/to/repo --output human               Force human-readable output
+  sentinel scan /path/to/repo --severity-threshold LOW     Stricter: any issue blocks
+  sentinel scan /path/to/repo --severity-threshold MEDIUM  MEDIUM+ issues block
+  sentinel scan /path/to/repo --all                        Scan ALL files (no filtering)
+  sentinel scan /path/to/repo --no-gitignore               Include .gitignored files
+  sentinel scan /path/to/repo --stats                      Show detailed statistics
+  sentinel scan /path/to/repo --exclude "*.test.py,docs/*"  Skip files matching patterns
+  sentinel scan /path/to/repo --include "*.py,*.js,*.yaml"  Only scan specific file types
+  sentinel --version                                       Show version
 
 Exit codes:
   0  PASS - No security issues found (or only LOW at default threshold)
@@ -107,6 +113,38 @@ Exit codes:
         default=None,
         help="[Legacy] Output results as JSON. Use --output json instead. Optionally specify a file path.",
         metavar="FILE",
+    )
+    scan_parser.add_argument(
+        "--all",
+        "--scan-all",
+        action="store_true",
+        dest="scan_all",
+        help="Scan ALL files — no binary filtering, no dir skipping, no gitignore respect. Maximum coverage mode.",
+    )
+    scan_parser.add_argument(
+        "--no-gitignore",
+        action="store_true",
+        dest="no_gitignore",
+        help="Include .gitignored files in the scan (e.g., .env files, credential dumps)",
+    )
+    scan_parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show detailed scan statistics: file type breakdown, per-scanner timing, findings by type",
+    )
+    scan_parser.add_argument(
+        "--exclude",
+        type=str,
+        default=None,
+        help="Comma-separated gitignore-style patterns to exclude (e.g. '*.test.py,docsen/*')",
+        metavar="PATTERNS",
+    )
+    scan_parser.add_argument(
+        "--include",
+        type=str,
+        default=None,
+        help="Comma-separated gitignore-style patterns to include (e.g. '*.py,*.js,*.yaml')",
+        metavar="PATTERNS",
     )
     scan_parser.add_argument(
         "--verbose",
@@ -244,6 +282,13 @@ def run_scan(args: argparse.Namespace) -> int:
     verbose = args.verbose
     threshold = args.severity_threshold
 
+    # Parse scanning options
+    scan_all = getattr(args, 'scan_all', False)
+    no_gitignore = getattr(args, 'no_gitignore', False)
+    show_stats = getattr(args, 'stats', False)
+    exclude_patterns = _parse_pattern_list(getattr(args, 'exclude', None))
+    include_patterns = _parse_pattern_list(getattr(args, 'include', None))
+
     # Determine output mode: --output takes priority over legacy --json/--sarif
     is_legacy_json = args.json is not None
     is_legacy_sarif = args.sarif is not None
@@ -282,11 +327,25 @@ def run_scan(args: argparse.Namespace) -> int:
     if output_format == "human" and not output_file:
         print(f"\n🔍 Sentinel v{__version__} - Scanning: {repo_path}")
         print(f"   Threshold: {threshold.value}")
+        if scan_all:
+            print(f"   Mode:       FULL SCAN (all files)")
+        elif no_gitignore:
+            print(f"   Mode:       Including .gitignored files")
+        if exclude_patterns:
+            print(f"   Exclude:    {','.join(exclude_patterns)}")
+        if include_patterns:
+            print(f"   Include:    {','.join(include_patterns)}")
         print(f"   This may take a moment...\n")
 
     # Run the scanning pipeline
     try:
-        result = scan_repository(repo_path)
+        result = scan_repository(
+            repo_path,
+            scan_all=scan_all,
+            no_gitignore=no_gitignore,
+            exclude_patterns=exclude_patterns,
+            include_patterns=include_patterns,
+        )
     except Exception as e:
         print(f"Error during scan: {e}", file=sys.stderr)
         if verbose:
@@ -309,7 +368,7 @@ def run_scan(args: argparse.Namespace) -> int:
         _write_output(formatted, output_file, "JSON")
     else:
         # Human-readable
-        formatted = human.format_scan_result(result)
+        formatted = human.format_scan_result(result, show_stats=show_stats)
         if output_file:
             try:
                 with open(output_file, "w", encoding="utf-8") as f:
@@ -322,6 +381,13 @@ def run_scan(args: argparse.Namespace) -> int:
             print(formatted)
 
     return exit_code
+
+
+def _parse_pattern_list(value: str | None) -> List[str]:
+    """Parse a comma-separated list of patterns from a CLI argument."""
+    if not value:
+        return []
+    return [p.strip() for p in value.split(",") if p.strip()]
 
 
 def _write_output(content: str, file_path: str | None, format_name: str) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 
 from ..models import Finding, ScanResult, Severity, Verdict
 
@@ -18,6 +18,14 @@ class Colors:
     BOLD = "\033[1m"
     DIM = "\033[2m"
     RESET = "\033[0m"
+
+
+# Icons for finding types
+TYPE_ICONS: Dict[str, str] = {
+    "secret": "🔑",
+    "static_analysis": "⚠️",
+    "dependency": "📦",
+}
 
 
 def _severity_color(severity: Severity) -> str:
@@ -49,8 +57,32 @@ def _rule_label(rule_id: str) -> str:
     return f"{Colors.DIM}{rule_id}{Colors.RESET}"
 
 
-def format_scan_result(result: ScanResult) -> str:
-    """Format scan results as a human-readable string."""
+def _issue_type_icon(issue_type: str) -> str:
+    return TYPE_ICONS.get(issue_type, "🔍")
+
+
+def _format_file_extensions(files_by_ext: Dict[str, int]) -> str:
+    """Format file extension breakdown as a compact string."""
+    if not files_by_ext:
+        return ""
+    parts: List[str] = []
+    sorted_exts = sorted(files_by_ext.items(), key=lambda x: -x[1])
+    for ext_key, count in sorted_exts:
+        ext_display = ext_key if ext_key != "(no ext)" else "(none)"
+        parts.append(f"{Colors.DIM}{ext_display}: {count}{Colors.RESET}")
+    return ", ".join(parts)
+
+
+def format_scan_result(result: ScanResult, show_stats: bool = False) -> str:
+    """Format scan results as a human-readable string.
+
+    Args:
+        result: The scan result to format.
+        show_stats: If True, include detailed scan statistics.
+
+    Returns:
+        A formatted string suitable for CLI display.
+    """
     verdict = result.get_verdict()
     lines: List[str] = []
 
@@ -73,6 +105,17 @@ def format_scan_result(result: ScanResult) -> str:
     lines.append(f"  Scan time:         {result.scan_time_ms:.0f}ms")
     if result.target_url:
         lines.append(f"  Target URL:        {result.target_url}")
+    if result.scan_all:
+        lines.append(f"  Scan mode:         {Colors.RED}FULL SCAN (all files){Colors.RESET}")
+    elif result.no_gitignore:
+        lines.append(f"  Scan mode:         {Colors.YELLOW}including .gitignored{Colors.RESET}")
+
+    # Show file type breakdown in summary
+    if result.files_by_extension and not result.scanned_endpoints:
+        ext_line = _format_file_extensions(result.files_by_extension)
+        if ext_line:
+            lines.append(f"  File types:        {ext_line}")
+
     lines.append("")
 
     if not result.findings:
@@ -81,10 +124,6 @@ def format_scan_result(result: ScanResult) -> str:
 
     # Breakdown by severity
     if result.findings:
-        high_count = sum(1 for f in result.findings if f.severity == Severity.HIGH)
-        med_count = sum(1 for f in result.findings if f.severity == Severity.MEDIUM)
-        low_count = sum(1 for f in result.findings if f.severity == Severity.LOW)
-
         lines.append(f"{Colors.BOLD}Findings by severity:{Colors.RESET}")
         critical_count = sum(1 for f in result.findings if f.severity == Severity.CRITICAL)
         high_count = sum(1 for f in result.findings if f.severity == Severity.HIGH)
@@ -100,6 +139,16 @@ def format_scan_result(result: ScanResult) -> str:
         if low_count:
             lines.append(f"  {Colors.BLUE}{low_count} LOW{Colors.RESET}")
         lines.append("")
+
+        # ─── Findings by type ─────────────────────────────────────────
+        by_type = result.findings_by_type
+        if by_type:
+            lines.append(f"{Colors.BOLD}Findings by type:{Colors.RESET}")
+            for issue_type in sorted(by_type.keys()):
+                icon = _issue_type_icon(issue_type)
+                type_label = issue_type.replace("_", " ").title()
+                lines.append(f"  {icon} {type_label}: {by_type[issue_type]}")
+            lines.append("")
 
     # Detailed findings
     if result.findings:
@@ -121,12 +170,13 @@ def format_scan_result(result: ScanResult) -> str:
             for finding in file_findings:
                 badge = _severity_badge(finding.severity)
                 rule = _rule_label(finding.rule_id)
+                icon = _issue_type_icon(finding.issue_type)
 
                 # File:Line reference
                 line_ref = f"{Colors.DIM}line {finding.line_number}{Colors.RESET}"
 
                 lines.append(
-                    f"    {badge} {finding.message} {line_ref} {rule}"
+                    f"    {badge} {icon} {finding.message} {line_ref} {rule}"
                 )
 
                 # Show snippet if available
@@ -134,7 +184,7 @@ def format_scan_result(result: ScanResult) -> str:
                     snippet = finding.snippet[:80]
                     lines.append(f"           {Colors.DIM}\u2514\u2500\u2192 {snippet}{Colors.RESET}")
 
-                    # Show detection method
+                # Show detection method
                 method = finding.detection_method
                 method_str = f"{Colors.DIM}method: {method}{Colors.RESET}"
                 lines.append(f"           {method_str}")
@@ -165,6 +215,39 @@ def format_scan_result(result: ScanResult) -> str:
                     lines.append(f"           {ep_str}")
 
                 lines.append("")
+
+    # ─── Detailed statistics (--stats flag) ───────────────────────────
+    if show_stats:
+        lines.append(f"{Colors.BOLD}── Scan Statistics ──{Colors.RESET}")
+        lines.append("")
+
+        # Scanner times
+        if result.scanner_times_ms:
+            lines.append(f"{Colors.BOLD}Scanner timing:{Colors.RESET}")
+            total_time = result.scan_time_ms
+            for scanner_name, scanner_time in sorted(
+                result.scanner_times_ms.items(), key=lambda x: -x[1]
+            ):
+                pct = (scanner_time / total_time * 100) if total_time > 0 else 0
+                label = scanner_name.replace("_", " ").title()
+                lines.append(f"  {Colors.DIM}{label}: {scanner_time:.0f}ms ({pct:.0f}%){Colors.RESET}")
+            lines.append(f"  {Colors.DIM}Total: {total_time:.0f}ms{Colors.RESET}")
+            lines.append("")
+
+        # File extension breakdown
+        if result.files_by_extension:
+            lines.append(f"{Colors.BOLD}File extension breakdown:{Colors.RESET}")
+            sorted_exts = sorted(
+                result.files_by_extension.items(), key=lambda x: -x[1]
+            )
+            total_files = sum(c for _, c in sorted_exts)
+            for ext_key, count in sorted_exts:
+                ext_display = ext_key if ext_key != "(no ext)" else "(no extension)"
+                pct = (count / total_files * 100) if total_files > 0 else 0
+                bar_len = max(1, int(pct / 5))
+                bar = "▓" * min(bar_len, 20) + "░" * max(0, 20 - bar_len)
+                lines.append(f"  {Colors.DIM}{ext_display:15} {count:5} ({pct:5.1f}%) {bar}{Colors.RESET}")
+            lines.append("")
 
     # Verdict
     lines.append("")

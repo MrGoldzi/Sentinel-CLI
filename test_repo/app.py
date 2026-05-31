@@ -10,7 +10,6 @@ def insecure_eval(user_input):
     result = eval(user_input)
     return result
 
-
 def insecure_exec(user_code):
     """Vulnerability: exec() on user input allows arbitrary code execution."""
     exec(user_code)

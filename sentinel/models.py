@@ -132,6 +132,12 @@ class ScanResult:
     scan_time_ms: float = 0.0
     severity_threshold: Severity = Severity.HIGH
     target_url: str = ""
+    files_by_extension: Dict[str, int] = field(default_factory=dict)
+    scanner_times_ms: Dict[str, float] = field(default_factory=dict)
+    scan_all: bool = False
+    no_gitignore: bool = False
+    exclude_patterns: List[str] = field(default_factory=list)
+    include_patterns: List[str] = field(default_factory=list)
 
     def deduplicate(self) -> None:
         """Remove duplicate findings based on file_path, line_number, and rule_id."""
@@ -150,6 +156,14 @@ class ScanResult:
         if not self.findings:
             return None
         return max(f.severity for f in self.findings)
+
+    @property
+    def findings_by_type(self) -> Dict[str, int]:
+        """Get findings grouped by issue_type (secret, static_analysis, dependency)."""
+        counts: Dict[str, int] = {}
+        for f in self.findings:
+            counts[f.issue_type] = counts.get(f.issue_type, 0) + 1
+        return counts
 
     def get_verdict(self) -> Verdict:
         """Determine the final verdict based on findings and severity threshold.
@@ -193,7 +207,13 @@ class ScanResult:
             "scan_time_ms": round(self.scan_time_ms, 2),
             "severity_threshold": self.severity_threshold.value,
             "findings": [f.to_dict() for f in self.findings],
+            "files_by_extension": dict(self.files_by_extension),
+            "scanner_times_ms": dict(self.scanner_times_ms),
         }
         if self.target_url:
             d["target_url"] = self.target_url
+        if self.scan_all:
+            d["scan_all"] = True
+        if self.no_gitignore:
+            d["no_gitignore"] = True
         return d

@@ -64,6 +64,10 @@ def scan_repository(
     repo_root: str,
     severity_threshold: Severity = Severity.HIGH,
     show_progress: bool = True,
+    scan_all: bool = False,
+    no_gitignore: bool = False,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None,
 ) -> ScanResult:
     """Run the complete scanning pipeline with parallel execution.
 
@@ -71,43 +75,70 @@ def scan_repository(
         repo_root: Root path of the repository to scan.
         severity_threshold: Minimum severity to trigger BLOCK.
         show_progress: If True, display a progress bar (requires tqdm).
+        scan_all: If True, scan ALL files (ignore binary/source filtering).
+        no_gitignore: If True, include .gitignored files in scan.
+        exclude_patterns: Optional gitignore-style exclude patterns.
+        include_patterns: Optional gitignore-style include patterns.
 
     Returns:
         A ScanResult containing all findings and metadata.
     """
     start_time = time.time()
+    scanner_times: Dict[str, float] = {}
 
     # ─── File Discovery ─────────────────────────────────────────────────
-    files = discover_files(repo_root)
+    t0 = time.time()
+    gitignore_aware = not no_gitignore
+    files = discover_files(
+        repo_root,
+        gitignore_aware=gitignore_aware,
+        scan_all=scan_all,
+        include_gitignored=no_gitignore,
+        exclude_patterns=exclude_patterns,
+        include_patterns=include_patterns,
+    )
+    scanner_times["file_discovery"] = (time.time() - t0) * 1000
+
     all_file_paths: List[Tuple[str, str]] = [
         (f, os.path.join(repo_root, f)) for f in files
     ]
 
+    # ─── Collect file extension stats ─────────────────────────────────
+    files_by_ext: Dict[str, int] = {}
+    for rel_path in files:
+        _, ext = os.path.splitext(rel_path)
+        ext_key = ext.lower() if ext else "(no ext)"
+        files_by_ext[ext_key] = files_by_ext.get(ext_key, 0) + 1
+
     # ─── Dependency Scan (fast, runs first) ────────────────────────────
+    t0 = time.time()
     dep_findings: List[Finding] = []
     try:
         dep_findings = dependency_scanner.scan(repo_root)
     except Exception:
         pass
+    scanner_times["dependency_scan"] = (time.time() - t0) * 1000
 
     # ├── Determine which files to scan for secrets and static analysis
-    # Only source/text files need pattern scanning
-    source_exts = {
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".php", ".rb", ".pl", ".pm",
-        ".sh", ".bash", ".zsh", ".ksh", ".java", ".go", ".rs", ".kt",
-        ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".scala", ".clj",
-        ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-        ".json", ".xml", ".html", ".htm", ".env", ".sql",
-        ".tf", ".tfvars", ".gradle", ".sbt",
-        ".txt", ".md", ".rst", ".properties",
-        ".env.example", ".env.sample",
-    }
-
-    source_files: List[Tuple[str, str]] = []
-    for rel_path, full_path in all_file_paths:
-        _, ext = os.path.splitext(rel_path)
-        if ext.lower() in source_exts:
-            source_files.append((rel_path, full_path))
+    # When scan_all is True, scan every discovered file
+    if scan_all:
+        source_files = all_file_paths
+    else:
+        source_exts = {
+            ".py", ".js", ".ts", ".jsx", ".tsx", ".php", ".rb", ".pl", ".pm",
+            ".sh", ".bash", ".zsh", ".ksh", ".java", ".go", ".rs", ".kt",
+            ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".scala", ".clj",
+            ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+            ".json", ".xml", ".html", ".htm", ".env", ".sql",
+            ".tf", ".tfvars", ".gradle", ".sbt",
+            ".txt", ".md", ".rst", ".properties",
+            ".env.example", ".env.sample",
+        }
+        source_files: List[Tuple[str, str]] = []
+        for rel_path, full_path in all_file_paths:
+            _, ext = os.path.splitext(rel_path)
+            if ext.lower() in source_exts:
+                source_files.append((rel_path, full_path))
 
     # ├── Run secrets and static analysis in parallel ──────────────────
     secret_findings: List[Finding] = []
@@ -128,6 +159,7 @@ def scan_repository(
         secrets_futures: List[concurrent.futures.Future] = []
         static_futures: List[concurrent.futures.Future] = []
 
+        t_scan_start = time.time()
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             for batch in batches:
                 # Submit secrets scan
@@ -165,8 +197,10 @@ def scan_repository(
                         static_findings.extend(future.result())
                     except Exception:
                         pass
+        scanner_times["parallel_scan"] = (time.time() - t_scan_start) * 1000
     else:
         # Sequential mode (few files or single-threaded)
+        t_scan_start = time.time()
         if show_progress:
             file_iter = tqdm(source_files, desc="Scanning", unit="file", leave=False)
         else:
@@ -178,6 +212,7 @@ def scan_repository(
                 static_findings.extend(static_analysis.scan_file(full_path, repo_root))
             except Exception:
                 pass
+        scanner_times["sequential_scan"] = (time.time() - t_scan_start) * 1000
 
     # ─── Aggregator: dedup + normalize ─────────────────────────────────
     all_findings: List[Finding] = []
@@ -189,6 +224,12 @@ def scan_repository(
         findings=all_findings,
         scanned_files=total_scan_files,
         severity_threshold=severity_threshold,
+        files_by_extension=files_by_ext,
+        scanner_times_ms=scanner_times,
+        scan_all=scan_all,
+        no_gitignore=no_gitignore,
+        exclude_patterns=exclude_patterns or [],
+        include_patterns=include_patterns or [],
     )
 
     result.deduplicate()

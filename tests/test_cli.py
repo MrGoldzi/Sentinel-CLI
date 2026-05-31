@@ -81,6 +81,31 @@ class TestSetupArgparse(unittest.TestCase):
         ])
         self.assertEqual(args.output_file, "results.sarif")
 
+    def test_scan_all_flag(self):
+        args = self.parser.parse_args(["scan", "/some/path", "--all"])
+        self.assertTrue(args.scan_all)
+
+    def test_scan_all_alt_name(self):
+        """--scan-all should work as an alias for --all."""
+        args = self.parser.parse_args(["scan", "/some/path", "--scan-all"])
+        self.assertTrue(args.scan_all)
+
+    def test_scan_no_gitignore(self):
+        args = self.parser.parse_args(["scan", "/some/path", "--no-gitignore"])
+        self.assertTrue(args.no_gitignore)
+
+    def test_scan_stats_flag(self):
+        args = self.parser.parse_args(["scan", "/some/path", "--stats"])
+        self.assertTrue(args.stats)
+
+    def test_scan_exclude(self):
+        args = self.parser.parse_args(["scan", "/some/path", "--exclude", "*.test.py,docs/*"])
+        self.assertEqual(args.exclude, "*.test.py,docs/*")
+
+    def test_scan_include(self):
+        args = self.parser.parse_args(["scan", "/some/path", "--include", "*.py,*.js"])
+        self.assertEqual(args.include, "*.py,*.js")
+
     def test_dast_command_args(self):
         args = self.parser.parse_args(["dast", "https://example.com"])
         self.assertEqual(args.command, "dast")
