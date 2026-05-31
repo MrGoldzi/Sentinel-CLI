@@ -1,0 +1,111 @@
+name: ✨ Feature Request
+description: Suggest a new feature or improvement for Sentinel
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Fill out the details below to help us understand your idea.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have checked the [documentation](https://github.com/your-org/sentinel#readme) and [existing issues](https://github.com/your-org/sentinel/issues) to see if this feature has already been suggested
+          required: true
+        - label: I have checked the [roadmap](https://github.com/your-org/sentinel#-roadmap) to see if this is already planned
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: A clear and concise description of what problem this feature would solve
+      placeholder: "I'm always frustrated when Sentinel doesn't support scanning for XYZ vulnerabilities..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature you'd like to see implemented
+      placeholder: "A new scanner module that checks for XYZ patterns would be great..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you've considered
+      placeholder: "I could use a pre-commit hook instead, but that would..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How impactful would this feature be for your use case?
+      options:
+        - Critical — I can't use Sentinel effectively without this
+        - High — This would significantly improve my workflow
+        - Medium — Nice to have, would save time
+        - Low — Cosmetic or minor convenience
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of Sentinel would this feature affect?
+      options:
+        - CLI / Argument parsing
+        - Secrets scanner
+        - Static analysis scanner
+        - Dependency scanner (OSV API)
+        - SARIF formatter
+        - JSON formatter
+        - Human-readable formatter
+        - Pipeline / Result processing
+        - CI/CD integration (GitHub Actions)
+        - Documentation / README
+        - New scanner module
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example Usage
+      description: Show how this feature would work with a concrete example
+      placeholder: |
+        ```bash
+        python cli.py scan . --new-flag value
+        ```
+        Expected output: ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or references (links to similar features in other tools, research papers, etc.)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Contribution
+      description: Would you be willing to help implement this feature?
+      options:
+        - label: I'm willing to submit a pull request for this feature
+        - label: I'm willing to test this feature once implemented

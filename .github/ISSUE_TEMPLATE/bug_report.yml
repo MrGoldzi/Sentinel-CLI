@@ -1,0 +1,156 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in Sentinel
+title: "[Bug]: "
+labels: ["bug", "triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible to help us reproduce and fix the issue.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Before submitting, please confirm the following
+      options:
+        - label: I have checked the [documentation](https://github.com/your-org/sentinel#readme) and [existing issues](https://github.com/your-org/sentinel/issues) for similar reports
+          required: true
+        - label: I am running the latest version of Sentinel
+          required: true
+        - label: I have provided clear steps to reproduce the issue
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: The scan command crashes when run on a project with YAML files...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Create a repo with `echo 'test' > test.py`
+        2. Run `python cli.py scan .`
+        3. See error...
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+      placeholder: The scan should complete successfully with a PASS verdict...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages, stack traces, or unexpected output.
+      placeholder: |
+        Traceback (most recent call last):
+          File "cli.py", line 42, in <module>
+            ...
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug for your use case?
+      options:
+        - Critical — Sentinel crashes or produces wrong results
+        - Major — A feature is broken or unusable
+        - Minor — Annoying but has a workaround
+        - Trivial — Cosmetic issue (typo, formatting)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of Sentinel is affected?
+      options:
+        - CLI / Argument parsing
+        - Secrets scanner
+        - Static analysis scanner
+        - Dependency scanner (OSV API)
+        - SARIF formatter
+        - JSON formatter
+        - Human-readable formatter
+        - Pipeline / Result processing
+        - CI/CD integration (GitHub Actions)
+        - Documentation / README
+        - Other
+      validations:
+        required: true
+
+  - type: input
+    id: sentinel-version
+    attributes:
+      label: Sentinel Version
+      description: What version of Sentinel are you running? Run `python cli.py --version` to find out
+      placeholder: "e.g. 0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: What Python version are you using?
+      placeholder: "e.g. 3.11.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: What OS are you running on?
+      placeholder: "e.g. macOS 14.3, Ubuntu 22.04, Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample Repository or Code
+      description: If possible, provide a minimal example that reproduces the issue. This can be a GitHub repo URL or inline code.
+      placeholder: "https://github.com/username/repro-repo or inline code... "
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Run with `--output json` or include the full terminal output for debugging
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (e.g., configuration files, custom rules)
+    validations:
+      required: false

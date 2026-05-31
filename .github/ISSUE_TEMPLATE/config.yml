@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussion
+    url: https://github.com/your-org/sentinel/discussions/new/choose
+    about: Ask questions, share ideas, or get help with using Sentinel
+  - name: 📖 Documentation
+    url: https://github.com/your-org/sentinel#readme
+    about: Check the README and contributing guide first

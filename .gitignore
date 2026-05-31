@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.cache/
+*.log
+
+# Reports (generated)
+*.sarif
+report.json
+report.sarif
+
+# Environments
+.env
+.venv
+env/
+venv/
