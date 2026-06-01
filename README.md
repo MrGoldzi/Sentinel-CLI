@@ -2,8 +2,8 @@
 
 <img src="assets/icon.png" alt="Sentinel Logo" width="278" />
 
+##
 
-## 
 **Local-first, deterministic security scanner for Git repositories and web applications.**
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
