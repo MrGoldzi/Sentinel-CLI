@@ -39,7 +39,8 @@ jobs:
         id: sentinel
         continue-on-error: true
         run: |
-          # Run Sentinel and capture exit code (bypasses set -e from GitHub Actions)
+          # Run Sentinel with OSV API (default) - comprehensive vulnerability coverage
+          # Captures exit code while bypassing set -e from GitHub Actions
           python -m sentinel scan . --sarif sentinel-results.sarif --severity-threshold MEDIUM || exit_code=$?
           echo "exit_code=${exit_code:-0}" >> "$GITHUB_OUTPUT"
 

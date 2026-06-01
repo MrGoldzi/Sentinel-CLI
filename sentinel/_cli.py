@@ -161,9 +161,9 @@ Exit codes:
         metavar="FILE",
     )
     scan_parser.add_argument(
-        "--online",
+        "--offline",
         action="store_true",
-        help="Use OSV API for dependency vulnerability checking instead of local database. Requires network access.",
+        help="Use local vulnerability database instead of OSV API. Ideal for air-gapped environments or faster CI scans.",
     )
     scan_parser.add_argument(
         "--severity-threshold",
@@ -328,15 +328,15 @@ def run_scan(args: argparse.Namespace) -> int:
             output_format = "human"
             output_file = args.output_file
 
-    # Parse --online flag
-    online = getattr(args, 'online', False)
+    # Parse --offline flag
+    offline = getattr(args, 'offline', False)
 
     # Print scan header (only for human output to stdout)
     if output_format == "human" and not output_file:
         print(f"\n🔍 Sentinel v{__version__} - Scanning: {repo_path}")
         print(f"   Threshold: {threshold.value}")
-        if online:
-            print(f"   Database:   OSV API (online)")
+        if offline:
+            print(f"   Database:   Local (offline)")
         if scan_all:
             print(f"   Mode:       FULL SCAN (all files)")
         elif no_gitignore:
@@ -355,7 +355,7 @@ def run_scan(args: argparse.Namespace) -> int:
             no_gitignore=no_gitignore,
             exclude_patterns=exclude_patterns,
             include_patterns=include_patterns,
-            online=online,
+            offline=offline,
         )
     except Exception as e:
         print(f"Error during scan: {e}", file=sys.stderr)

@@ -20,33 +20,38 @@
 ## Features
 
 - ** Secrets Scanner** — Detects API keys, tokens, JWTs, AWS credentials, private keys, database connection strings, and more using regex pattern matching
-- ** Dependency Scanner** — Parses `requirements.txt` (with basic Pipfile support) and checks package versions against a built-in vulnerability database with real CVE entries
+- ** Dependency Scanner** — Auto-detects 7+ package ecosystems (PyPI, npm, Maven, Go, crates.io, RubyGems, Packagist, NuGet) and queries the **OSV.dev API** (Google's open vulnerability database) by default for comprehensive, always-up-to-date CVE coverage. Equivalent to Semgrep Supply Chain's ecosystem breadth — no proprietary lock-in.
 - ** Static Analysis** — Detects insecure patterns: `eval()`, `exec()`, `os.system()`, unsafe `subprocess`, `pickle` deserialization, SQL injection, and more across 9+ languages
 - ** Decision Engine** — Configurable severity thresholds (LOW/MEDIUM/HIGH/CRITICAL) with clear exit codes for CI/CD integration
 - ** Three Output Formats** — Human-readable terminal output, machine-readable JSON, and **SARIF v2.1.0** for GitHub Advanced Security
-- ** Minimal Dependencies** — Only 3 lightweight packages (`pathspec`, `packaging`, `tqdm`)
-- ** Fully Offline by default** — No network calls by default; optional `--online` flag queries the OSV API for up-to-date vulnerability data
+- ** Minimal Dependencies** — Only 3 lightweight packages (`pathspec`, `packaging`, `tqdm`); no npm, no Docker
+- ** OSV API by default** — Queries the Google-maintained OSV.dev database (GHSA, PyPA, RustSec, Go vulndb, npm advisories, OSS-Fuzz, etc.) for real-time vulnerability data. Use `--offline` for air-gapped environments.
 - ** Test Repository** — Includes a sample repo with intentional vulnerabilities for testing
 - ** DAST Test Server** — Includes an intentionally vulnerable HTTP server at `test_servers/vulnerable_server.py` for DAST testing
 
 
 ## Why Sentinel?
 
-| Feature | Sentinel | Other Tools |
-|---------|----------|-------------|
-| Dependencies | **3 lightweight packages** | Often require npm, Docker, or cloud services |
-| Network | **Offline-first (no network by default)** | Many phone home or require API keys |
-| Online Mode | **Optional via `--online` flag** | Often always require network |
-| Deterministic | **Yes — regex + static analysis** | Often use ML/heuristics with variable results |
-| CI/CD Ready | **Exit codes + SARIF + JSON** | Varies widely |
-| Complexity | **One CLI command** | Often complex configuration required |
-| **Accuracy** | **Passive, deterministic analysis** | Often use active exploitation or heuristic models |
+| Feature | Sentinel | Semgrep | Other Tools |
+|---------|----------|---------|-------------|
+| Dependencies | **3 lightweight packages** | Requires npm/Docker | Often require npm, Docker, or cloud services |
+| Vulnerability DB | **OSV.dev API (default)** — GHSA, PyPA, RustSec, Go vulndb, npm advisories | Proprietary + GHSA | Often proprietary or NVD-only |
+| Ecosystem Support | **8 ecosystems** (PyPI, npm, Maven, Go, Rust, Ruby, PHP, .NET) | 10+ ecosystems | Varies widely |
+| Network | **Online by default, offline via `--offline`** | Requires network | Varies |
+| Deterministic | **Yes — regex + static analysis** | Yes — AST-based rules | Often use ML/heuristics with variable results |
+| CI/CD Ready | **Exit codes + SARIF + JSON** | SARIF + JSON | Varies widely |
+| Complexity | **One CLI command** | Complex YAML rules | Often complex configuration required |
+| Accuracy | **Passive, deterministic analysis** | AST + dataflow reachability | Often use active exploitation or heuristic models |
+| Open Data | **100% open OSV database** | Mixed open/proprietary | Often proprietary |
+| Air-Gapped | **Yes (`--offline` mode)** | Requires network | Rarely supported |
 
 Sentinel is ideal for:
-- **CI/CD pipelines** where you want fast, deterministic security checks without pulling in heavy dependencies
-- **Offline/air-gapped environments** where network access is restricted
+- **CI/CD pipelines** where you want comprehensive, always-up-to-date security checks without pulling in npm/Docker
+- **Multi-language monorepos** — auto-detects dependency files across 8 ecosystems
+- **Air-gapped environments** — `--offline` flag with built-in vulnerability database
 - **Learning and education** — the codebase is small, well-structured, and easy to understand
 - **Quick local scans** before committing code
+- **Replacing Semgrep Supply Chain** — comparable ecosystem coverage with zero proprietary lock-in
 
 ## Quick Start
 
@@ -171,7 +176,7 @@ sentinel scan <path> [options]
 | `--exclude PATTERNS` | Comma-separated gitignore-style patterns to exclude (e.g. `--exclude "*.test.py,docs/*"`). |
 | `--include PATTERNS` | Comma-separated gitignore-style patterns to only scan (e.g. `--include "*.py,*.js,*.yaml"`). |
 | `--verbose`, `-v` | Show detailed output during scanning |
-| `--online` | Use the OSV API for dependency vulnerability checking instead of the local database. Requires network access. Provides comprehensive, up-to-date CVE coverage. |
+| `--offline` | Use the local vulnerability database instead of the OSV API. Ideal for air-gapped environments or faster CI scans. |
 | `--severity-threshold {LOW,MEDIUM,HIGH}` | Minimum severity that triggers BLOCK. Default: HIGH. |
 | `--help` | Show help message |
 
@@ -410,18 +415,47 @@ Output includes:
 - Per-scanner timing breakdown (file discovery, dependency scan, parallel scan)
 - Findings split by issue type (secrets, static analysis, dependencies)
 
-### Using OSV API for comprehensive vulnerability data
+### OSV API (default) for comprehensive, always-up-to-date vulnerability data
+
+Sentinel queries the **OSV.dev API by default** — the same open vulnerability database used by Google, GitHub, and the OpenSSF. Covers vulnerabilities from:
+- GitHub Security Advisories (GHSA)
+- PyPA Advisory Database
+- RustSec Advisory Database
+- Go vulnerability database
+- npm Security Advisories
+- OSS-Fuzz findings
+- And many more sources
 
 ```bash
-# Query the OSV API instead of the local database
-sentinel scan /path/to/repo --online
+# Default: queries OSV API for ALL detected ecosystems
+sentinel scan /path/to/repo
 
 # Combine with other options
-sentinel scan /path/to/repo --online --severity-threshold MEDIUM
+sentinel scan /path/to/repo --severity-threshold MEDIUM
 
 # Export online results as SARIF
-sentinel scan /path/to/repo --online --output sarif -o online-results.sarif
+sentinel scan /path/to/repo --output sarif -o results.sarif
+
+# Offline mode: use built-in local database (air-gapped CI)
+sentinel scan /path/to/repo --offline
 ```
+
+#### Multi-ecosystem auto-detection
+
+Sentinel automatically discovers and scans dependency files across all major ecosystems:
+
+| Ecosystem | Files Detected |
+|-----------|---------------|
+| **PyPI** (Python) | `requirements.txt`, `Pipfile`, `Pipfile.lock` |
+| **npm** (JavaScript/TypeScript) | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` |
+| **Maven** (Java/Kotlin) | `pom.xml`, `build.gradle`, `build.gradle.kts` |
+| **Go** | `go.mod`, `go.sum` |
+| **crates.io** (Rust) | `Cargo.toml`, `Cargo.lock` |
+| **RubyGems** (Ruby) | `Gemfile`, `Gemfile.lock` |
+| **Packagist** (PHP) | `composer.json`, `composer.lock` |
+| **NuGet** (.NET) | `packages.config`, `*.csproj` |
+
+No configuration needed — just point Sentinel at your repo and it finds everything.
 
 ### Changing the severity threshold
 
@@ -554,9 +588,17 @@ Detects the following types of secrets in all text files:
 
 ### Dependency Scanner
 
-Parses `requirements.txt` (with basic Pipfile support) and checks package versions against the built-in vulnerability database (`data/vulndb.json`), which now contains **real CVE data** for all entries. The database covers 15 popular Python packages with accurate CVE IDs, severity ratings, and descriptions.
+Queries the **OSV.dev API by default** for comprehensive, always-up-to-date vulnerability data across all supported ecosystems. The OSV database aggregates advisories from:
+- **GitHub Security Advisories (GHSA)** — the industry standard for severity ratings
+- **PyPA Advisory Database** — official Python packaging vulnerabilities
+- **RustSec Advisory Database** — Rust crate vulnerabilities
+- **Go vulnerability database** — official Go module vulnerabilities
+- **npm Security Advisories** — Node.js package vulnerabilities
+- **OSS-Fuzz** — continuously fuzzed open source project findings
 
-Use the `--online` flag to query the **OSV (Open Source Vulnerabilities) API** at `api.osv.dev` for comprehensive, up-to-date vulnerability data. This mode queries all discovered dependencies against the OSV database for the PyPI ecosystem, including CVSS scores, fixed version information, and GitHub Advisory Database severity ratings.
+Auto-detects and parses dependency files across **8 package ecosystems** (PyPI, npm, Maven, Go, crates.io, RubyGems, Packagist, NuGet) — comparable coverage to Semgrep Supply Chain.
+
+Use `--offline` to fall back to the built-in local vulnerability database (`data/vulndb.json`) for air-gapped environments or ultra-fast CI scans.
 
 ### Static Analysis Scanner
 
@@ -658,9 +700,15 @@ sentinel/
 - [x] Intentionally vulnerable test HTTP server
 - [x] PyPI packaging (`pyproject.toml`, `requirements.txt`)
 
-### v0.3 (Planned)
+### v0.3
+- [x] **Multi-ecosystem dependency scanning** (PyPI, npm, Maven, Go, crates.io, RubyGems, Packagist, NuGet)
+- [x] **OSV API as default** — comprehensive, always-up-to-date vulnerability data
+- [x] **Batch OSV queries** for efficient multi-package checks
+- [x] **`--offline` flag** for air-gapped environments
+
+### v0.4 (Planned)
 - [ ] Language-specific static analyzers (JavaScript/TypeScript, Go)
-- [ ] Expanded vulnerability database with real CVE mappings
+- [ ] Lockfile-based transitive dependency resolution
 - [ ] `.env` file detection improvements
 - [ ] Configurable rules (enable/disable individual rules by ID)
 - [ ] `--diff` mode: scan only changed lines vs. a baseline
@@ -678,17 +726,15 @@ sentinel/
 
 *Sentinel is a community-driven project. The roadmap evolves based on contributor interest and user feedback. Open an issue or discussion to suggest priorities!*
 
-## Limitations (v0.2) (Working to implement accurately)
+## Limitations (v0.3)
 
 - **Deterministic only** — No heuristic or ML-based detection
 - **Regex-based secrets scanning** — May produce false positives and false negatives
 - **DAST is inference-based** — Detects vulnerabilities through observation, not exploitation; findings are validated across multiple payloads to minimize false positives
-- **Built-in vulnerability database** — Covers 15 popular Python packages; use `--online` for comprehensive OSV API access
-- **Limited language support** — Static analysis focuses primarily on Python patterns
-- **Vulnerability database** — Built-in database covers 15 popular packages; use `--online` for comprehensive OSV API coverage
-- **Basic Pipfile support** — Pipfile parsing is simplified
+- **Local vulnerability database is small** — The built-in `vulndb.json` covers 15 popular Python packages (used only with `--offline`). Default online mode queries all 8 ecosystems through the OSV API.
+- **Static analysis is Python-focused** — AST analysis is Python-only; other languages use regex patterns
+- **No transitive/lockfile dependency resolution** — Parses declared versions from manifest files but does not resolve full dependency trees
 - **Binary file scanning via `--all`** — Binary files can contain secrets, but snippets may appear garbled
-  (use `--all` to scan binaries, but expect less readable output)
 
 ## Related Projects
 
@@ -701,6 +747,8 @@ sentinel/
 Sentinel differentiates itself by being:
 - **Minimal dependencies** — Only 3 lightweight runtime packages, no npm, no Docker
 - **Fully deterministic** — Same input always produces the same output
+- **Open vulnerability data** — OSV.dev API is 100% open source and community-maintained; no proprietary lock-in
+- **Multi-ecosystem** — 8 package ecosystems detected automatically; comparable to Semgrep Supply Chain
 - **Simple codebase** — Easy to understand, modify, and contribute to
 - **Multi-format output** — Human, JSON, and SARIF out of the box
 

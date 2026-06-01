@@ -89,6 +89,15 @@ XSS_PAYLOADS: List[Dict] = [
     {"payload": "'-alert(1)-'", "context": "js_string_single", "description": "JavaScript string break (single quote)"},
     {"payload": '\"-alert(1)-\"', "context": "js_string_double", "description": "JavaScript string break (double quote)"},
     {"payload": "javascript:alert(1)", "context": "uri", "description": "javascript: URI injection"},
+    {"payload": "<svg/onload=alert(1)>", "context": "svg", "description": "SVG onload event handler"},
+    {"payload": "<img src=x onerror=alert(1)>", "context": "tag", "description": "Image onerror event handler"},
+    {"payload": "<body onload=alert(1)>", "context": "body", "description": "Body onload event handler"},
+    {"payload": "<details/open/ontoggle=alert(1)>", "context": "details", "description": "Details ontoggle event handler"},
+    {"payload": "<marquee/onstart=alert(1)>", "context": "marquee", "description": "Marquee onstart event handler"},
+    {"payload": "%3Cscript%3Ealert(1)%3C/script%3E", "context": "url_encoded", "description": "URL-encoded script tag"},
+    {"payload": "<iframe src=javascript:alert(1)>", "context": "iframe", "description": "Iframe javascript: URI"},
+    {"payload": "<a href=javascript:alert(1)>click</a>", "context": "anchor", "description": "Anchor javascript: URI"},
+    {"payload": "<math><mi/xlink:href=\"data:x,<script>alert(1)</script>\">", "context": "mathml", "description": "MathML xlink:href injection"},
 ]
 
 # Minimum number of payloads that must reflect for a HIGH-confidence finding
@@ -147,6 +156,12 @@ SENSITIVE_ENDPOINTS: List[str] = [
     "/api/health", "/health", "/healthcheck", "/status",
     "/robots.txt", "/sitemap.xml", "/.well-known/security.txt",
     "/graphql", "/api/graphql",
+    "/.vscode/settings.json", "/.DS_Store", "/docker-compose.yml",
+    "/package.json", "/tsconfig.json", "/.aws/credentials",
+    "/.kube/config", "/Dockerfile", "/docker-compose.yaml",
+    "/Jenkinsfile", "/.travis.yml", "/.circleci/config.yml",
+    "/Procfile", "/.npmrc", "/.pypirc", "/wp-config.php",
+    "/web.config", "/appsettings.json", "/appsettings.Development.json",
 ]
 
 # Common IDOR patterns to test
@@ -258,7 +273,8 @@ def make_request(
         req_headers.update(headers)
 
     if body:
-        req_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        if "Content-Type" not in req_headers:
+            req_headers["Content-Type"] = "application/x-www-form-urlencoded"
 
     start_time = time.time()
 
@@ -434,6 +450,13 @@ class DASTConfig:
     check_metadata: bool = True
     check_rate_limiting: bool = True
     check_open_redirect: bool = True
+    check_graphql: bool = True
+    check_csp: bool = True
+    check_http_methods: bool = True
+    check_framework: bool = True
+    check_cookie_prefix: bool = True
+    check_sri: bool = True
+    check_websocket: bool = True
     custom_headers: Dict[str, str] = field(default_factory=dict)
 
 
@@ -628,6 +651,38 @@ class DASTScanner:
 
         # ─── Phase 21: SSRF Indicators ──────────────────────────────
         self._check_ssrf_indicators(initial_resp)
+
+        # ─── Phase 22: GraphQL Introspection ────────────────────────
+        if self.config.check_graphql:
+            self._check_graphql_introspection()
+
+        # ─── Phase 23: CSP Analysis ─────────────────────────────────
+        if self.config.check_csp:
+            self._check_csp_analysis(initial_resp)
+
+        # ─── Phase 24: HTTP Method Enumeration ──────────────────────
+        if self.config.check_http_methods:
+            self._check_http_methods()
+
+        # ─── Phase 25: Framework Fingerprinting ──────────────────────
+        if self.config.check_framework:
+            self._check_framework_fingerprinting(initial_resp)
+
+        # ─── Phase 26: Cookie Prefix Analysis ────────────────────────
+        if self.config.check_cookie_prefix:
+            self._check_cookie_prefix(initial_resp)
+
+        # ─── Phase 27: Subresource Integrity ─────────────────────────
+        if self.config.check_sri:
+            self._check_subresource_integrity(initial_resp)
+
+        # ─── Phase 28: WebSocket Security ────────────────────────────
+        if self.config.check_websocket:
+            self._check_websocket_security(initial_resp)
+
+        # ─── Phase 29: Content-Type Sniffing ─────────────────────────
+        if self.config.check_misconfiguration:
+            self._check_content_type_sniffing(initial_resp)
 
         # Build result
         return self._build_result(start_time)
@@ -2036,6 +2091,233 @@ class DASTScanner:
                     remediation_hint="Block access to cloud metadata endpoints. "
                                      "Implement a URL allowlist. Use IMDSv2 with hop limits.",
                 )
+
+
+    # ═══════════════════════════════════════════════════════════════════
+    # NEW Phase 22-29: Modern web security checks
+    # ═══════════════════════════════════════════════════════════════════
+
+    def _check_graphql_introspection(self) -> None:
+        """Check for exposed GraphQL introspection endpoint."""
+        for endpoint in ["/graphql", "/api/graphql", "/gql", "/api/gql"]:
+            if len(self.scanned_endpoints) >= self.config.max_endpoints:
+                break
+            url = build_url(self.origin, endpoint)
+            resp = self._make_request(
+                url,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body='{"query":"{__schema{types{name}}}"}',
+                timeout=self.config.timeout,
+            )
+            self.scanned_endpoints.append(url)
+            if resp.status_code == 200 and "__schema" in resp.body:
+                self._add_finding(
+                    rule_id="DAST-GRAPHQL-INTROSPECTION",
+                    issue_type="dast_information_disclosure",
+                    severity=Severity.MEDIUM,
+                    message=f"GraphQL introspection is enabled at '{endpoint}'. This exposes the entire API schema to attackers.",
+                    endpoint=url,
+                    cwe_id="CWE-200",
+                    owasp_category="A05:2021",
+                    evidence=f"Introspection query returned schema data ({len(resp.body)} bytes)",
+                    confidence=0.95,
+                    remediation_hint="Disable GraphQL introspection in production. Use Apollo Server's introspection: false or equivalent for your framework.",
+                )
+                break
+
+    def _check_csp_analysis(self, resp: SafeResponse) -> None:
+        """Analyze Content-Security-Policy header for dangerous directives."""
+        csp = resp.headers.get("Content-Security-Policy", "")
+        if not csp:
+            return
+        findings_list = []
+        if "'unsafe-inline'" in csp:
+            findings_list.append("'unsafe-inline' (allows inline scripts/styles → XSS risk)")
+        if "'unsafe-eval'" in csp:
+            findings_list.append("'unsafe-eval' (allows eval() → code injection risk)")
+        if re.search(r"(?:script-src|default-src)\s+[^;]*\*", csp):
+            findings_list.append("wildcard source in script-src or default-src (allows scripts from any domain)")
+        if "data:" in csp:
+            findings_list.append("data: URI allowed (can be used for XSS payloads)")
+        if findings_list:
+            self._add_finding(
+                rule_id="DAST-CSP-INSECURE",
+                issue_type="dast_security_misconfiguration",
+                severity=Severity.MEDIUM,
+                message=f"Content-Security-Policy contains insecure directives: {'; '.join(findings_list)}",
+                cwe_id="CWE-1021",
+                owasp_category="A05:2021",
+                evidence=csp[:300],
+                confidence=0.9,
+                remediation_hint="Remove 'unsafe-inline' and 'unsafe-eval' from CSP. Use nonces or hashes for inline scripts. Use strict-dynamic for script loading.",
+            )
+
+    def _check_http_methods(self) -> None:
+        """Check for dangerous HTTP methods enabled on the server."""
+        url = build_url(self.origin, "")
+        resp = self._make_request(url, method="OPTIONS", timeout=self.config.timeout)
+        if resp.status_code == 0:
+            return
+        allow_header = resp.headers.get("Allow", resp.headers.get("Access-Control-Allow-Methods", ""))
+        if not allow_header:
+            return
+        dangerous_methods = ["TRACE", "PUT", "DELETE", "PATCH"]
+        found_dangerous = [m for m in dangerous_methods if m.upper() in allow_header.upper()]
+        if found_dangerous:
+            self._add_finding(
+                rule_id="DAST-HTTP-METHODS",
+                issue_type="dast_security_misconfiguration",
+                severity=Severity.MEDIUM,
+                message=f"Potentially dangerous HTTP methods enabled: {', '.join(found_dangerous)}. "
+                        "TRACE can enable XST attacks. PUT/DELETE may allow unauthorized modifications.",
+                cwe_id="CWE-749",
+                owasp_category="A05:2021",
+                evidence=f"Allow header: {allow_header}",
+                confidence=0.8,
+                remediation_hint="Disable TRACE method. Restrict PUT, DELETE, PATCH to authenticated users only. Use proper HTTP method allowlisting.",
+            )
+
+    def _check_framework_fingerprinting(self, resp: SafeResponse) -> None:
+        """Detect framework/technology stack from response headers and body patterns."""
+        frameworks: List[Tuple[str, str, str]] = []
+        # Check headers
+        server = resp.headers.get("Server", "")
+        powered = resp.headers.get("X-Powered-By", "").lower()
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        # Django
+        if "csrftoken" in set_cookie.lower() or "django" in powered:
+            frameworks.append(("Django", "Python", "Cookie: csrftoken"))
+        # Rails
+        if "_session_id" in set_cookie.lower() or "rails" in server.lower():
+            frameworks.append(("Ruby on Rails", "Ruby", "Server/Rails signature"))
+        # Express
+        if "express" in powered or "connect.sid" in set_cookie.lower():
+            frameworks.append(("Express.js", "Node.js", "Cookie: connect.sid / X-Powered-By"))
+        # Laravel
+        if "laravel_session" in set_cookie.lower() or "laravel" in powered:
+            frameworks.append(("Laravel", "PHP", "Cookie: laravel_session"))
+        # Spring
+        if "JSESSIONID" in set_cookie or "spring" in powered:
+            frameworks.append(("Spring Boot", "Java", "Cookie: JSESSIONID"))
+        # ASP.NET
+        if "ASPSESSIONID" in set_cookie or "ASP.NET" in powered:
+            frameworks.append(("ASP.NET", "C#", "Cookie: ASPSESSIONID"))
+        # Flask
+        if "session" in set_cookie.lower() and "python" in server.lower():
+            frameworks.append(("Flask", "Python", "Server/Python signature"))
+        if frameworks:
+            fw_desc = "; ".join(f"{fw[0]} ({fw[1]}, indicator: {fw[2]})" for fw in frameworks)
+            self._add_finding(
+                rule_id="DAST-FRAMEWORK-FINGERPRINT",
+                issue_type="dast_information_disclosure",
+                severity=Severity.LOW,
+                message=f"Framework/technology stack detected: {fw_desc}",
+                cwe_id="CWE-200",
+                owasp_category="A05:2021",
+                evidence=f"Detected: {', '.join(fw[0] for fw in frameworks)}",
+                confidence=0.7,
+                remediation_hint="Remove or obfuscate framework-specific headers and cookie names. Use generic Server header. Strip X-Powered-By.",
+            )
+
+    def _check_cookie_prefix(self, resp: SafeResponse) -> None:
+        """Check for __Host- and __Secure- cookie prefixes on session cookies."""
+        set_cookie = resp.headers.get("Set-Cookie", "")
+        if not set_cookie:
+            return
+        session_cookie_names = {"session", "sessionid", "sid", "connect.sid", "JSESSIONID",
+                                 "laravel_session", "PHPSESSID", "_session_id", "csrftoken",
+                                 "token", "jwt", "access_token"}
+        cookies: List[str] = [set_cookie]
+        all_cookies = resp.headers.get_all("Set-Cookie") if hasattr(resp.headers, "get_all") else None
+        if all_cookies:
+            cookies = all_cookies
+        for cookie_header in cookies:
+            cookie_name = cookie_header.split("=", 1)[0] if "=" in cookie_header else ""
+            name_lower = cookie_name.lower()
+            if any(s in name_lower for s in session_cookie_names):
+                if not cookie_name.startswith("__Host-") and not cookie_name.startswith("__Secure-"):
+                    self._add_finding(
+                        rule_id="DAST-COOKIE-PREFIX",
+                        issue_type="dast_security_misconfiguration",
+                        severity=Severity.LOW,
+                        message=f"Session cookie '{cookie_name}' does not use __Host- or __Secure- prefix. "
+                                "Without these prefixes, cookies may be set by subdomains or over HTTP.",
+                        cwe_id="CWE-1275",
+                        owasp_category="A05:2021",
+                        evidence=f"Cookie: {cookie_header[:150]}",
+                        confidence=0.6,
+                        remediation_hint="Rename session cookies to use __Host- prefix (most secure) or __Secure- prefix. "
+                                         "__Host- cookies require Secure, Path=/, and no Domain attribute.",
+                    )
+
+    def _check_subresource_integrity(self, resp: SafeResponse) -> None:
+        """Check for 3rd-party <script> tags without Subresource Integrity (SRI) hashes."""
+        # Find external script tags without integrity attribute
+        script_pattern = re.compile(
+            r'<script[^>]*src=["\'](https?:)?//([^"\']+)["\'][^>]*>',
+            re.IGNORECASE,
+        )
+        scripts_without_integrity = []
+        for match in script_pattern.finditer(resp.body):
+            tag = match.group(0)
+            if "integrity=" not in tag.lower():
+                domain = match.group(2)
+                scripts_without_integrity.append(domain[:60])
+        if scripts_without_integrity:
+            unique_sources = list(set(scripts_without_integrity))[:5]
+            self._add_finding(
+                rule_id="DAST-SRI-MISSING",
+                issue_type="dast_security_misconfiguration",
+                severity=Severity.LOW,
+                message=f"{len(scripts_without_integrity)} external script(s) loaded without Subresource Integrity (SRI) hashes. "
+                        f"Sources: {', '.join(unique_sources)}",
+                cwe_id="CWE-829",
+                owasp_category="A08:2021",
+                evidence=f"Scripts from: {', '.join(unique_sources)}",
+                confidence=0.85,
+                remediation_hint="Add integrity=\"sha384-...\" attributes to all external script tags. Use https://www.srihash.org to generate hashes.",
+            )
+
+    def _check_websocket_security(self, resp: SafeResponse) -> None:
+        """Check for WebSocket security indicators in response."""
+        body_lower = resp.body.lower()
+        ws_indicators = [
+            (r"(?:ws|wss)://", "WebSocket URL found in response"),
+            (r"new\s+WebSocket\s*\(", "JavaScript WebSocket constructor found"),
+        ]
+        for pattern, indicator in ws_indicators:
+            matches = re.findall(pattern, body_lower, re.IGNORECASE)
+            if matches:
+                ws_urls = list(set(matches))[:3]
+                self._add_finding(
+                    rule_id="DAST-WEBSOCKET",
+                    issue_type="dast_security_misconfiguration",
+                    severity=Severity.LOW,
+                    message=f"WebSocket usage detected: {indicator}. Ensure WebSocket connections use wss://, validate Origin headers, and implement authentication.",
+                    cwe_id="CWE-319",
+                    owasp_category="A02:2021",
+                    evidence=f"Patterns found: {', '.join(str(u) for u in ws_urls)}",
+                    confidence=0.7,
+                    remediation_hint="Use wss:// (WebSocket Secure) only. Validate the Origin header on the server. Implement token-based WebSocket authentication.",
+                )
+                break
+
+    def _check_content_type_sniffing(self, resp: SafeResponse) -> None:
+        """Check for X-Content-Type-Options: nosniff header."""
+        cto = resp.headers.get("X-Content-Type-Options", "")
+        if cto.lower() != "nosniff":
+            self._add_finding(
+                rule_id="DAST-NO-NOSNIFF",
+                issue_type="dast_security_misconfiguration",
+                severity=Severity.LOW,
+                message="Missing X-Content-Type-Options: nosniff header. Browsers may MIME-sniff content, enabling XSS via uploaded files.",
+                cwe_id="CWE-693",
+                owasp_category="A05:2021",
+                evidence=f"X-Content-Type-Options: {cto or '(not set)'}",
+                confidence=0.9,
+                remediation_hint="Add 'X-Content-Type-Options: nosniff' header to all responses to prevent MIME type sniffing.",
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════

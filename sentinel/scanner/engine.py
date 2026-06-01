@@ -69,7 +69,7 @@ def scan_repository(
     no_gitignore: bool = False,
     exclude_patterns: Optional[List[str]] = None,
     include_patterns: Optional[List[str]] = None,
-    online: bool = False,
+    offline: bool = False,
 ) -> ScanResult:
     """Run the complete scanning pipeline with parallel execution.
 
@@ -81,7 +81,7 @@ def scan_repository(
         no_gitignore: If True, include .gitignored files in scan.
         exclude_patterns: Optional gitignore-style exclude patterns.
         include_patterns: Optional gitignore-style include patterns.
-        online: If True, use OSV API for dependency vulnerability checking.
+        offline: If True, use local vulndb instead of OSV API for dependency checks.
 
     Returns:
         A ScanResult containing all findings and metadata.
@@ -117,7 +117,7 @@ def scan_repository(
     t0 = time.time()
     dep_findings: List[Finding] = []
     try:
-        dep_findings = dependency_scanner.scan(repo_root, online=online)
+        dep_findings = dependency_scanner.scan(repo_root, offline=offline)
     except (IOError, OSError, json.JSONDecodeError, ValueError):
         dep_findings = []
     except Exception:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinel-security"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first, deterministic security scanner for Git repositories and web applications"
 readme = "README.md"
 license = { text = "Apache-2.0" }

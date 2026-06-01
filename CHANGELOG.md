@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Sentinel logo icon to README header
 
+## [0.3.0] — 2026-06-01
+
+### Added
+
+- **Multi-ecosystem dependency scanning** — Auto-detects and parses 7+ package ecosystems:
+  - PyPI (`requirements.txt`, `Pipfile`, `Pipfile.lock`)
+  - npm (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
+  - Maven (`pom.xml`, `build.gradle`, `build.gradle.kts`)
+  - Go (`go.mod`, `go.sum`)
+  - crates.io / Rust (`Cargo.toml`, `Cargo.lock`)
+  - RubyGems (`Gemfile`, `Gemfile.lock`)
+  - Packagist / PHP (`composer.json`, `composer.lock`)
+  - NuGet / .NET (`packages.config`, `*.csproj`)
+- **OSV API as default** — Queries the Google-maintained OSV.dev database by default
+  for comprehensive, real-time vulnerability data from GHSA, PyPA, RustSec, Go vulndb,
+  npm advisories, OSS-Fuzz, and more
+- **OSV batch querying** — Uses the OSV `/v1/querybatch` endpoint for efficient
+  multi-package vulnerability checks
+- **`--offline` flag** — Opt-in offline mode using the built-in local vulnerability
+  database. Ideal for air-gapped environments or ultra-fast CI runs
+
+### Changed
+
+- **BREAKING**: `--online` flag removed. OSV API is now the default. Use `--offline` for
+  local-only mode
+- **BREAKING**: `scan()` / `scan_repository()` parameter renamed from `online` to `offline`
+- `dependency_scanner.scan()` now returns ecosystem-tagged findings (e.g. `[PyPI]` prefix)
+- Version bumped from 0.2.0 → 0.3.0
+
+### Removed
+
+- `--online` CLI flag (replaced by `--offline`)
+
 ## [0.2.0] — 2026-05-31
 
 ### Added

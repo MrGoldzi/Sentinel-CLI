@@ -43,7 +43,7 @@ def scan_repository(
     no_gitignore: bool = False,
     exclude_patterns: Optional[List[str]] = None,
     include_patterns: Optional[List[str]] = None,
-    online: bool = False,
+    offline: bool = False,
 ) -> ScanResult:
     """Run the complete SAST scanning pipeline using the ScannerEngine.
 
@@ -55,8 +55,7 @@ def scan_repository(
         no_gitignore: If True, include .gitignored files in scan.
         exclude_patterns: Optional gitignore-style exclude patterns.
         include_patterns: Optional gitignore-style include patterns.
-        online: If True, use OSV API for vulnerability checking instead of
-                the local vulnerability database.
+        offline: If True, use local vulndb instead of querying the OSV API.
 
     Returns:
         A ScanResult containing all findings and metadata.
@@ -69,7 +68,7 @@ def scan_repository(
         no_gitignore=no_gitignore,
         exclude_patterns=exclude_patterns,
         include_patterns=include_patterns,
-        online=online,
+        offline=offline,
     )
 
 

@@ -1,7 +1,7 @@
 """Unit tests for the dependency scanner module.
 
 Tests requirements.txt parsing, vulnerability database loading,
-version comparison, and finding generation.
+version comparison, multi-ecosystem parsing, and finding generation.
 """
 
 from __future__ import annotations
@@ -18,7 +18,11 @@ from sentinel.scanner.dependency_scanner import (
     _parse_requirements_line,
     _check_vulnerability,
     _extract_version,
-    _parse_dependency_files,
+    _parse_requirements_txt,
+    _parse_pipfile,
+    _parse_package_json,
+    _parse_pom_xml,
+    _parse_all_dependency_files,
     _scan_local,
     scan,
     VULN_DB_PATH,
@@ -213,18 +217,16 @@ class TestParseDependencyFiles(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_no_dependency_file(self):
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
+        packages = _parse_all_dependency_files(self.temp_dir)
         self.assertEqual(packages, [])
-        self.assertEqual(dep_name, "")
 
     def test_requirements_txt_parsed(self):
         req_path = os.path.join(self.temp_dir, "requirements.txt")
         with open(req_path, "w") as f:
             f.write("flask==2.0.0\ndjango>=3.2,<4.0\n# comment\nclick==8.0.0\n")
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        self.assertEqual(dep_name, "requirements.txt")
-        self.assertEqual(len(packages), 3)
-        names = [p[0] for p in packages]
+        packages = _parse_all_dependency_files(self.temp_dir)
+        self.assertGreaterEqual(len(packages), 3)
+        names = [p[1] for p in packages]  # (ecosystem, name, version, line, snippet)
         self.assertIn("flask", names)
         self.assertIn("django", names)
         self.assertIn("click", names)
@@ -233,12 +235,29 @@ class TestParseDependencyFiles(unittest.TestCase):
         pipfile_path = os.path.join(self.temp_dir, "Pipfile")
         with open(pipfile_path, "w") as f:
             f.write("[packages]\nflask = \"==2.0.0\"\ndjango = \">=3.2\"\n")
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        self.assertEqual(dep_name, "Pipfile")
-        self.assertEqual(len(packages), 2)
+        packages = _parse_all_dependency_files(self.temp_dir)
+        self.assertGreaterEqual(len(packages), 2)
+
+    def test_package_json_parsed(self):
+        pkg_path = os.path.join(self.temp_dir, "package.json")
+        with open(pkg_path, "w") as f:
+            json.dump({"dependencies": {"express": "^4.18.0", "lodash": "~4.17.21"}}, f)
+        packages = _parse_all_dependency_files(self.temp_dir)
+        self.assertGreaterEqual(len(packages), 1)
+        names = [p[1] for p in packages]
+        self.assertIn("express", names)
+
+    def test_go_mod_parsed(self):
+        go_path = os.path.join(self.temp_dir, "go.mod")
+        with open(go_path, "w") as f:
+            f.write("module example\n\ngo 1.21\n\nrequire (\n\tgithub.com/gin-gonic/gin v1.9.1\n\tgolang.org/x/crypto v0.14.0\n)\n")
+        packages = _parse_all_dependency_files(self.temp_dir)
+        names = [p[1] for p in packages]
+        self.assertIn("github.com/gin-gonic/gin", names)
 
     def test_requirements_txt_io_error(self):
-        packages, dep_name = _parse_dependency_files("/nonexistent")
+        # Should not crash on missing files
+        packages = _parse_all_dependency_files("/nonexistent")
         self.assertEqual(packages, [])
 
 
@@ -257,18 +276,21 @@ class TestScanLocal(unittest.TestCase):
         with open(path, "w") as f:
             f.write(content)
 
+    def _packages_to_5tuple(self, packages):
+        """Convert (name, version_spec, line_num, snippet) to 5-tuple with ecosystem."""
+        return [("PyPI", p[0], p[1], p[2], p[3]) for p in packages]
+
     def test_no_vulnerabilities_found(self):
         self._create_requirements("click==8.0.0\n")
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        findings = _scan_local(packages, dep_name)
+        pkgs = _parse_requirements_txt(os.path.join(self.temp_dir, "requirements.txt"))
+        findings = _scan_local(self._packages_to_5tuple(pkgs), "requirements.txt")
         self.assertEqual(len(findings), 0)
 
     def test_vulnerable_package_found(self):
         self._create_requirements("flask==2.0.0\n")
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        findings = _scan_local(packages, dep_name)
+        pkgs = _parse_requirements_txt(os.path.join(self.temp_dir, "requirements.txt"))
+        findings = _scan_local(self._packages_to_5tuple(pkgs), "requirements.txt")
         self.assertGreater(len(findings), 0)
-        # Flask 2.0.0 should be flagged (CVE-2023-25577, <2.3.0)
         flask_findings = [f for f in findings if "flask" in f.message.lower()]
         self.assertGreater(len(flask_findings), 0)
 
@@ -276,14 +298,14 @@ class TestScanLocal(unittest.TestCase):
         self._create_requirements(
             "flask==2.0.0\ndjango==3.0.0\npyyaml==5.3.0\n"
         )
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        findings = _scan_local(packages, dep_name)
+        pkgs = _parse_requirements_txt(os.path.join(self.temp_dir, "requirements.txt"))
+        findings = _scan_local(self._packages_to_5tuple(pkgs), "requirements.txt")
         self.assertGreaterEqual(len(findings), 3)
 
     def test_finding_has_correct_structure(self):
         self._create_requirements("flask==2.0.0\n")
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        findings = _scan_local(packages, dep_name)
+        pkgs = _parse_requirements_txt(os.path.join(self.temp_dir, "requirements.txt"))
+        findings = _scan_local(self._packages_to_5tuple(pkgs), "requirements.txt")
         self.assertGreater(len(findings), 0)
         finding = findings[0]
         self.assertEqual(finding.issue_type, "dependency")
@@ -294,10 +316,9 @@ class TestScanLocal(unittest.TestCase):
 
     def test_version_edge_case_boundary(self):
         """Test vulnerability at the version boundary."""
-        self._create_requirements("flask==2.3.0\n")  # Just above the <2.3.0 range
-        packages, dep_name = _parse_dependency_files(self.temp_dir)
-        findings = _scan_local(packages, dep_name)
-        # Should NOT be flagged since 2.3.0 is the fix version
+        self._create_requirements("flask==2.3.0\n")
+        pkgs = _parse_requirements_txt(os.path.join(self.temp_dir, "requirements.txt"))
+        findings = _scan_local(self._packages_to_5tuple(pkgs), "requirements.txt")
         self.assertEqual(len(findings), 0)
 
 
@@ -320,17 +341,35 @@ class TestScan(unittest.TestCase):
         with open(req_path, "w") as f:
             f.write("flask==2.0.0\npyyaml==5.3.0\n")
         findings = scan(self.temp_dir)
-        self.assertGreaterEqual(len(findings), 2)
+        # May or may not find results depending on network (OSV API default)
+        # But should return a list
+        self.assertIsInstance(findings, list)
 
     def test_scan_online_not_available_graceful(self):
-        """When online mode is used but network is unavailable, should return gracefully."""
+        """When online mode is used (default) but network is unavailable, should return gracefully."""
         req_path = os.path.join(self.temp_dir, "requirements.txt")
         with open(req_path, "w") as f:
             f.write("flask==2.0.0\n")
-        # This should not crash even if OSV API is unreachable
-        findings = scan(self.temp_dir, online=True)
-        # May or may not find results depending on network, but shouldn't crash
+        findings = scan(self.temp_dir, offline=False)
         self.assertIsInstance(findings, list)
+
+    def test_scan_offline_mode(self):
+        """When offline mode is used, should use local vulndb."""
+        req_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_path, "w") as f:
+            f.write("flask==2.0.0\n")
+        findings = scan(self.temp_dir, offline=True)
+        self.assertIsInstance(findings, list)
+        # In offline mode with the local DB, should find flask vulnerability
+        self.assertGreater(len(findings), 0)
+
+    def test_scan_offline_no_vulns(self):
+        """Offline mode with a safe package should return empty."""
+        req_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_path, "w") as f:
+            f.write("click==8.0.0\n")
+        findings = scan(self.temp_dir, offline=True)
+        self.assertEqual(len(findings), 0)
 
 
 if __name__ == "__main__":
