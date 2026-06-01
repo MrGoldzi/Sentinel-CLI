@@ -71,29 +71,47 @@ python scripts/validate_sarif.py /tmp/sarif_out.json
 
 ```
 sentinel/
-├── cli.py                          # CLI entry point
+├── cli.py                          # CLI entry point (scan + dast commands)
+├── pyproject.toml                  # Package build configuration
+├── requirements.txt                # Python dependencies
 ├── sentinel/
 │   ├── __init__.py                 # Package init, version info
+│   ├── _cli.py                     # CLI argument parsing & command routing
+│   ├── main.py                     # Entry point for `sentinel` command
 │   ├── models.py                   # Data models (Finding, Severity, Verdict, ScanResult)
-│   ├── pipeline.py                 # Central scanning pipeline
+│   ├── pipeline.py                 # Scanning pipeline orchestrator
 │   ├── decision.py                 # Decision engine (verdict logic)
 │   ├── scanner/
 │   │   ├── __init__.py
-│   │   ├── secrets_scanner.py      # Regex-based secrets detection
-│   │   ├── dependency_scanner.py   # Dependency vulnerability checker
-│   │   └── static_analysis.py      # Insecure code pattern detection
+│   │   ├── engine.py               # Parallel scanner orchestration engine
+│   │   ├── file_discovery.py       # File discovery with gitignore/pathspec support
+│   │   ├── secrets_scanner.py      # Regex + entropy-based secrets detection (40+ patterns)
+│   │   ├── dependency_scanner.py   # Multi-ecosystem dependency vuln scanner (OSV API)
+│   │   ├── static_analysis.py      # 70+ insecure code pattern rules across 6 languages
+│   │   └── dast_scanner.py         # 29-phase DAST web application scanner
 │   └── formatters/
 │       ├── __init__.py
 │       ├── human.py                # Human-readable CLI output
 │       ├── json_formatter.py       # Machine-readable JSON output
 │       └── sarif.py                # SARIF v2.1.0 output
 ├── data/
-│   └── vulndb.json                 # Built-in mock vulnerability database
+│   └── vulndb.json                 # Local vulnerability database (offline fallback)
 ├── scripts/
 │   └── validate_sarif.py           # SARIF schema validation utility
 ├── tests/
 │   ├── __init__.py
-│   └── test_sarif_formatter.py     # SARIF output formatter tests
+│   ├── test_cli.py                 # CLI argument parsing tests
+│   ├── test_engine.py              # Scanner engine tests
+│   ├── test_secrets_scanner.py     # Secrets scanner tests
+│   ├── test_static_analysis.py     # Static analysis tests
+│   ├── test_dependency_scanner.py  # Dependency scanner tests
+│   ├── test_dast_scanner.py        # DAST scanner tests
+│   ├── test_file_discovery.py      # File discovery tests
+│   ├── test_decision.py            # Decision engine tests
+│   ├── test_sarif_formatter.py     # SARIF formatter tests
+│   └── test_end_to_end.py          # End-to-end integration tests
+├── test_servers/
+│   └── vulnerable_server.py        # Intentionally vulnerable HTTP server for DAST testing
 ├── .github/
 │   └── workflows/
 │       └── sentinel-scan.yml       # GitHub Actions workflow

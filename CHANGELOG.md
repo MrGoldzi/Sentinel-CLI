@@ -10,12 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Sentinel logo icon to README header
+- Documentation updates to match v0.3.0 implementation (DAST 29 phases, 70+ static patterns, 40+ secrets patterns, CRITICAL threshold)
 
 ## [0.3.0] — 2026-06-01
 
 ### Added
 
-- **Multi-ecosystem dependency scanning** — Auto-detects and parses 7+ package ecosystems:
+- **Multi-ecosystem dependency scanning** — Auto-detects and parses 8 package ecosystems:
   - PyPI (`requirements.txt`, `Pipfile`, `Pipfile.lock`)
   - npm (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
   - Maven (`pom.xml`, `build.gradle`, `build.gradle.kts`)
