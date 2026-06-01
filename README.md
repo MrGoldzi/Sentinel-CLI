@@ -2,7 +2,6 @@
 
 <img src="assets/icon.png" alt="Sentinel Logo" width="278" />
 
-# Sentinel
 
 **Local-first, deterministic security scanner for Git repositories and web applications.**
 
