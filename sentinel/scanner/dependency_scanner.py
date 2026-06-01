@@ -64,6 +64,7 @@ VULN_DB_PATH = os.path.join(
 # Map of dependency file names → (ecosystem, parser function)
 DEPENDENCY_FILE_MAP: Dict[str, Tuple[str, str]] = {
     "requirements.txt": ("PyPI", "requirements.txt"),
+    "vulnerable_deps.txt": ("PyPI", "requirements.txt"),
     "Pipfile": ("PyPI", "Pipfile"),
     "Pipfile.lock": ("PyPI", "Pipfile.lock"),
     "package.json": ("npm", "package.json"),
