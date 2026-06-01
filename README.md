@@ -1,4 +1,4 @@
-<div align="center">
+g<div align="center">
 
 <img src="assets/icon.png" alt="Sentinel Logo" width="278" />
 
