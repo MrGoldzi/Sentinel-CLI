@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/icon.png" alt="Sentinel Logo" width="128" />
+
 # Sentinel
 
 **Local-first, deterministic security scanner for Git repositories.**
