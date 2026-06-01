@@ -676,7 +676,7 @@ sentinel/
 
 *Sentinel is a community-driven project. The roadmap evolves based on contributor interest and user feedback. Open an issue or discussion to suggest priorities!*
 
-## Limitations (v0.2)
+## Limitations (v0.2) (Working to implement accurately)
 
 - **Deterministic only** — No heuristic or ML-based detection
 - **Regex-based secrets scanning** — May produce false positives and false negatives
