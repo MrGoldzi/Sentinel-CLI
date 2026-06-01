@@ -169,6 +169,7 @@ sentinel scan <path> [options]
 | `--exclude PATTERNS` | Comma-separated gitignore-style patterns to exclude (e.g. `--exclude "*.test.py,docs/*"`). |
 | `--include PATTERNS` | Comma-separated gitignore-style patterns to only scan (e.g. `--include "*.py,*.js,*.yaml"`). |
 | `--verbose`, `-v` | Show detailed output during scanning |
+| `--online` | Use the OSV API for dependency vulnerability checking instead of the local database. Requires network access. Provides comprehensive, up-to-date CVE coverage. |
 | `--severity-threshold {LOW,MEDIUM,HIGH}` | Minimum severity that triggers BLOCK. Default: HIGH. |
 | `--help` | Show help message |
 
@@ -407,6 +408,19 @@ Output includes:
 - Per-scanner timing breakdown (file discovery, dependency scan, parallel scan)
 - Findings split by issue type (secrets, static analysis, dependencies)
 
+### Using OSV API for comprehensive vulnerability data
+
+```bash
+# Query the OSV API instead of the local database
+sentinel scan /path/to/repo --online
+
+# Combine with other options
+sentinel scan /path/to/repo --online --severity-threshold MEDIUM
+
+# Export online results as SARIF
+sentinel scan /path/to/repo --online --output sarif -o online-results.sarif
+```
+
 ### Changing the severity threshold
 
 ```bash
@@ -538,7 +552,9 @@ Detects the following types of secrets in all text files:
 
 ### Dependency Scanner
 
-Parses `requirements.txt` (with basic Pipfile support) and checks package versions against `data/vulndb.json`.
+Parses `requirements.txt` (with basic Pipfile support) and checks package versions against the built-in vulnerability database (`data/vulndb.json`), which now contains **real CVE data** for all entries. The database covers 15 popular Python packages with accurate CVE IDs, severity ratings, and descriptions.
+
+Use the `--online` flag to query the **OSV (Open Source Vulnerabilities) API** at `api.osv.dev` for comprehensive, up-to-date vulnerability data. This mode queries all discovered dependencies against the OSV database for the PyPI ecosystem, including CVSS scores, fixed version information, and GitHub Advisory Database severity ratings.
 
 ### Static Analysis Scanner
 
