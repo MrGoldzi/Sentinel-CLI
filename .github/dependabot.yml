@@ -1,0 +1,32 @@
+# Dependabot configuration for Sentinel Security Scanner
+# 
+# Only scan the repository root for dependencies to avoid flagging
+# intentionally vulnerable test data in test_repo/ and test_repos/.
+
+version: 2
+updates:
+  # Python/pip dependencies - root only
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+
+  # GitHub Actions - keep workflow actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
