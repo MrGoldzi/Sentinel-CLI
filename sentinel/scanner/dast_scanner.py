@@ -56,13 +56,14 @@ MAX_REDIRECTS = 5
 MAX_RESPONSE_SIZE = 512 * 1024  # 512KB max response body
 
 # Safe injection payloads (passive/observational only — no exploitation)
+# Each type has multiple payloads for cross-validation accuracy
 INJECTION_PAYLOADS: Dict[str, List[str]] = {
     "sql": [
-        "'", "\"", "';", "\";", "' OR '1'='1", "\" OR \"1\"=\"1",
+        "'", "\"", "';", "' OR '1'='1", "\" OR \"1\"=\"1",
         "' UNION SELECT NULL--", "1; SELECT 1",
     ],
     "nosql": [
-        "'", "\"", "';'", "\";\"", "{$ne: null}", '{"$ne": null}',
+        "'", "\"", "';'", "{$ne: null}", '{"$ne": null}',
     ],
     "command": [
         "; echo", "| echo", "`echo`", "$(echo)", "& echo",
@@ -80,10 +81,18 @@ INJECTION_PAYLOADS: Dict[str, List[str]] = {
 }
 
 # XSS test payloads (passive reflection check — no execution)
-XSS_PAYLOADS: List[str] = [
-    "<xss>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
-    "'-alert(1)-'", "\"-alert(1)-\"",
+# Each payload is designed to detect reflection in different HTML contexts
+XSS_PAYLOADS: List[Dict] = [
+    {"payload": "<xss>", "context": "tag", "description": "Raw HTML tag injection"},
+    {"payload": "<script>alert(1)</script>", "context": "tag", "description": "Script tag injection"},
+    {"payload": '" onfocus="alert(1)', "context": "attribute", "description": "Event handler injection"},
+    {"payload": "'-alert(1)-'", "context": "js_string_single", "description": "JavaScript string break (single quote)"},
+    {"payload": '\"-alert(1)-\"', "context": "js_string_double", "description": "JavaScript string break (double quote)"},
+    {"payload": "javascript:alert(1)", "context": "uri", "description": "javascript: URI injection"},
 ]
+
+# Minimum number of payloads that must reflect for a HIGH-confidence finding
+MIN_PAYLOADS_FOR_HIGH_CONFIDENCE = 2
 
 # Common security headers to check
 SECURITY_HEADERS: Dict[str, Tuple[str, str, Severity]] = {
@@ -906,17 +915,19 @@ class DASTScanner:
                 break
 
     def _check_injection_reflections(self) -> None:
-        """Check for injection vulnerabilities via passive reflection detection.
+        """Check for injection vulnerabilities via passive multi-payload reflection detection.
 
-        Sends safe payloads as query parameters and checks if they are reflected
-        in responses in a way that suggests injection is possible.
+        Uses multiple payloads per injection type and requires cross-validation
+        to minimize false positives. Confidence is boosted when:
+        - Multiple payloads reflect in the response
+        - Reflection occurs in an executable HTML context
+        - Payload appears outside of error messages
         """
         for inj_type, payloads in INJECTION_PAYLOADS.items():
-            for payload in payloads:
-                # Only test a subset of payloads to limit requests
-                if len(payloads) > 2 and payloads.index(payload) > 1 and inj_type not in ("sql",):
-                    continue
+            reflected_payloads: List[str] = []
+            reflection_contexts: List[str] = []
 
+            for payload in payloads:
                 test_url = f"{self.target_url}?q={urllib.parse.quote(payload)}"
                 resp = self._make_request(test_url, timeout=self.config.timeout)
 
@@ -925,52 +936,98 @@ class DASTScanner:
 
                 # Check if payload is reflected in the response
                 if payload in resp.body:
-                    severity_map = {
-                        "sql": Severity.CRITICAL,
-                        "command": Severity.CRITICAL,
-                        "ldap": Severity.HIGH,
-                        "xpath": Severity.HIGH,
-                        "nosql": Severity.HIGH,
-                        "ssti": Severity.CRITICAL,
-                    }
-                    cwe_map = {
-                        "sql": "CWE-89",
-                        "command": "CWE-78",
-                        "ldap": "CWE-90",
-                        "xpath": "CWE-643",
-                        "nosql": "CWE-943",
-                        "ssti": "CWE-94",
-                    }
-                    owasp_map = {
-                        "sql": "A03:2021",
-                        "command": "A03:2021",
-                        "ldap": "A03:2021",
-                        "xpath": "A03:2021",
-                        "nosql": "A03:2021",
-                        "ssti": "A03:2021",
-                    }
-
-                    severity = severity_map.get(inj_type, Severity.HIGH)
-                    cwe_id = cwe_map.get(inj_type, "CWE-74")
-                    owasp = owasp_map.get(inj_type, "A03:2021")
-
-                    # Find context around the reflection
+                    reflected_payloads.append(payload)
                     context = self._get_reflection_context(resp.body, payload)
+                    reflection_contexts.append(context)
 
-                    self._add_finding(
-                        rule_id=f"DAST-INJECTION-{inj_type.upper()}",
-                        issue_type="dast_injection",
-                        severity=severity,
-                        message=f"Potential {inj_type.upper()} injection detected. "
-                                f"Payload '{payload}' was reflected in the response "
-                                "without proper sanitization.",
-                        cwe_id=cwe_id,
-                        owasp_category=owasp,
-                        evidence=f"Reflected payload: '{payload}' in context: '{context}'",
-                        confidence=0.5,  # Lower confidence for passive detection
-                        remediation_hint=self._injection_remediation(inj_type),
-                    )
-                    break  # One finding per injection type
+            if not reflected_payloads:
+                continue
+
+            # Calculate confidence based on multiple signals
+            num_reflected = len(reflected_payloads)
+            base_confidence = 0.4
+
+            # Boost: multiple payloads reflect (cross-validation)
+            if num_reflected >= MIN_PAYLOADS_FOR_HIGH_CONFIDENCE:
+                base_confidence += 0.25
+
+            # Boost: reflection in multiple distinct contexts
+            unique_contexts = len(set(reflection_contexts))
+            if unique_contexts >= 2:
+                base_confidence += 0.1
+
+            # Check if ALL reflections are within error messages (likely FP)
+            all_in_errors = all(
+                self._is_in_error_message(ctx) for ctx in reflection_contexts
+            )
+            if all_in_errors and num_reflected < 3:
+                base_confidence -= 0.2
+
+            # Boost: check if payload appears in executable HTML context
+            in_exec_context = any(
+                self._is_in_executable_context(ctx, p)
+                for ctx, p in zip(reflection_contexts, reflected_payloads)
+            )
+            if in_exec_context:
+                base_confidence += 0.15
+
+            # Boost: payload appears multiple times in body
+            total_occurrences = sum(resp.body.count(p) for p in reflected_payloads)
+            if total_occurrences > num_reflected * 2:
+                base_confidence += 0.1
+
+            # Cap confidence
+            confidence = min(base_confidence, 0.95)
+
+            severity_map = {
+                "sql": Severity.CRITICAL,
+                "command": Severity.CRITICAL,
+                "ldap": Severity.HIGH,
+                "xpath": Severity.HIGH,
+                "nosql": Severity.HIGH,
+                "ssti": Severity.CRITICAL,
+            }
+            cwe_map = {
+                "sql": "CWE-89",
+                "command": "CWE-78",
+                "ldap": "CWE-90",
+                "xpath": "CWE-643",
+                "nosql": "CWE-943",
+                "ssti": "CWE-94",
+            }
+            owasp_map = {
+                "sql": "A03:2021",
+                "command": "A03:2021",
+                "ldap": "A03:2021",
+                "xpath": "A03:2021",
+                "nosql": "A03:2021",
+                "ssti": "A03:2021",
+            }
+
+            severity = severity_map.get(inj_type, Severity.HIGH)
+            cwe_id = cwe_map.get(inj_type, "CWE-74")
+            owasp = owasp_map.get(inj_type, "A03:2021")
+
+            # Use the best context for evidence
+            best_context = max(reflection_contexts, key=len) if reflection_contexts else ""
+            reflected_summary = ", ".join(reflected_payloads[:3])
+            if len(reflected_payloads) > 3:
+                reflected_summary += f" (+{len(reflected_payloads) - 3} more)"
+
+            self._add_finding(
+                rule_id=f"DAST-INJECTION-{inj_type.upper()}",
+                issue_type="dast_injection",
+                severity=severity,
+                message=f"Potential {inj_type.upper()} injection detected. "
+                        f"{num_reflected} payload(s) reflected in response "
+                        f"({reflected_summary}).",
+                cwe_id=cwe_id,
+                owasp_category=owasp,
+                evidence=f"Reflected {num_reflected}/{len(payloads)} payloads. "
+                         f"Context: '{best_context}'",
+                confidence=confidence,
+                remediation_hint=self._injection_remediation(inj_type),
+            )
 
     def _get_reflection_context(self, body: str, payload: str, window: int = 50) -> str:
         """Extract context around a reflected payload in the response body."""
@@ -983,6 +1040,59 @@ class DASTScanner:
         # Clean up whitespace
         context = re.sub(r"\s+", " ", context).strip()
         return context[:120]
+
+    def _is_in_error_message(self, context: str) -> bool:
+        """Check if the reflection context is within an error message (likely false positive)."""
+        error_indicators = [
+            "Traceback", "Error:", "Warning:", "Notice:", "Fatal error",
+            "exception", "SyntaxError", "TypeError", "ValueError", "NameError",
+            "Warning:", "Parse error", "Stack trace", "Stacktrace",
+            "not found", "does not exist", "Invalid input", "Bad request",
+            "404 Not Found", "500 Internal",
+        ]
+        return any(indicator.lower() in context.lower() for indicator in error_indicators)
+
+    def _is_in_executable_context(self, context: str, payload: str) -> bool:
+        """Check if reflected payload appears in an executable HTML context.
+        
+        Executable contexts include:
+        - Inside <script> tags
+        - In HTML event handlers (onclick, onfocus, etc.)
+        - In href/src attributes (potential XSS/ injection)
+        - Inside <style> tags
+        """
+        # Create context with placeholder for the reflected payload
+        context_lower = context.lower()
+        
+        # Check script context
+        if "<script" in context_lower:
+            return True
+        
+        # Check event handler context (onclick, onfocus, onerror, etc.)
+        if re.search(r"on\w+\s*=", context_lower):
+            return True
+        
+        # Check attribute context (inside HTML tags)
+        if re.search(r"<[a-zA-Z][^>]*" + re.escape(payload[:20]), context):
+            return True
+        if re.search(re.escape(payload[:20]) + r"[^>]*>", context):
+            return True
+        
+        # Check href/src/action attributes
+        for attr in ["href", "src", "action", "data", "formaction"]:
+            if f"{attr}=" in context_lower:
+                # Check if payload is near the attribute
+                attr_pos = context_lower.find(f"{attr}=")
+                if attr_pos >= 0:
+                    attr_value_start = context_lower.find("\"", attr_pos)
+                    if attr_value_start >= 0:
+                        attr_value_end = context_lower.find("\"", attr_value_start + 1)
+                        if attr_value_end >= 0:
+                            attr_value = context[attr_value_start:attr_value_end + 1]
+                            if payload[:20] in attr_value:
+                                return True
+        
+        return False
 
     def _injection_remediation(self, inj_type: str) -> str:
         """Get remediation guidance for an injection type."""
@@ -1004,8 +1114,19 @@ class DASTScanner:
                                           "Use parameterized queries and prepared statements.")
 
     def _check_xss_reflections(self) -> None:
-        """Check for reflected XSS vulnerabilities."""
-        for payload in XSS_PAYLOADS:
+        """Check for reflected XSS vulnerabilities using multi-payload validation.
+
+        Uses structured payloads with context metadata to accurately assess:
+        - Whether reflection occurs in an executable HTML context (script, event handler, etc.)
+        - How many payloads reflect (cross-validation)
+        - The specific HTML context type for severity scoring
+        """
+        reflected_payloads: List[Dict] = []
+
+        for payload_entry in XSS_PAYLOADS:
+            payload = payload_entry["payload"]
+            context_type = payload_entry["context"]
+
             test_url = f"{self.target_url}?q={urllib.parse.quote(payload)}"
             resp = self._make_request(test_url, timeout=self.config.timeout)
 
@@ -1015,29 +1136,81 @@ class DASTScanner:
             # Check if payload is reflected unsanitized
             if payload in resp.body:
                 context = self._get_reflection_context(resp.body, payload)
+                # Determine if reflection is in an executable HTML context
+                exec_context = self._is_in_executable_context(context, payload)
+                reflected_payloads.append({
+                    "payload": payload,
+                    "context_type": context_type,
+                    "context": context,
+                    "exec_context": exec_context,
+                    "resp": resp,
+                })
 
-                # Determine if reflection is in an HTML context
-                html_context = any(
-                    tag in resp.body.lower() for tag in ["<html", "<body", "<div", "<p>"]
-                )
+        if not reflected_payloads:
+            return
 
-                confidence = 0.6 if html_context else 0.4
+        # Calculate confidence
+        num_reflected = len(reflected_payloads)
+        base_confidence = 0.4
 
-                self._add_finding(
-                    rule_id="DAST-XSS-REFLECTED",
-                    issue_type="dast_xss",
-                    severity=Severity.HIGH,
-                    message=f"Potential reflected XSS detected. Payload '{payload}' "
-                            "was reflected in the response body.",
-                    cwe_id="CWE-79",
-                    owasp_category="A03:2021",
-                    evidence=f"Reflected payload: '{payload}' in context: '{context}'",
-                    confidence=confidence,
-                    remediation_hint="Sanitize all user input using context-appropriate "
-                                     "encoding (HTML entity encoding, URL encoding, etc.). "
-                                     "Use a Content-Security-Policy header as defense-in-depth.",
-                )
-                break  # One XSS finding is enough
+        # Boost: multiple different payload types reflect
+        if num_reflected >= 2:
+            base_confidence += 0.2
+        if num_reflected >= 3:
+            base_confidence += 0.1
+
+        # Boost: reflection in executable context (event handlers, script tags)
+        exec_context_count = sum(1 for rp in reflected_payloads if rp["exec_context"])
+        if exec_context_count > 0:
+            base_confidence += 0.2
+
+        # Boost: multiple distinct context types
+        context_types = set(rp["context_type"] for rp in reflected_payloads)
+        if len(context_types) >= 2:
+            base_confidence += 0.1
+
+        # Check if payloads appear in HTML body vs error page
+        html_body_indicators = ["<html", "<body", "<div", "<p>", "<h1", "<table"]
+        in_html_body = any(
+            any(tag in rp["resp"].body.lower() for tag in html_body_indicators)
+            for rp in reflected_payloads
+        )
+        if in_html_body:
+            base_confidence += 0.1
+
+        # Penalty: all reflections only in error messages
+        all_in_errors = all(
+            self._is_in_error_message(rp["context"]) for rp in reflected_payloads
+        )
+        if all_in_errors:
+            base_confidence -= 0.2
+
+        confidence = min(base_confidence, 0.95)
+
+        payload_summary = ", ".join(rp["payload"] for rp in reflected_payloads[:3])
+        if len(reflected_payloads) > 3:
+            payload_summary += f" (+{len(reflected_payloads) - 3} more)"
+
+        best_context = max(rp["context"] for rp in reflected_payloads)
+        context_types_str = ", ".join(sorted(context_types))
+
+        self._add_finding(
+            rule_id="DAST-XSS-REFLECTED",
+            issue_type="dast_xss",
+            severity=Severity.HIGH,
+            message=f"Potential reflected XSS detected. {num_reflected} payload(s) "
+                    f"({payload_summary}) reflected in response. "
+                    f"Context types: {context_types_str}.",
+            cwe_id="CWE-79",
+            owasp_category="A03:2021",
+            evidence=f"Reflected {num_reflected}/{len(XSS_PAYLOADS)} payloads. "
+                     f"Executable context: {exec_context_count > 0}. "
+                     f"Best context: '{best_context}'",
+            confidence=confidence,
+            remediation_hint="Sanitize all user input using context-appropriate "
+                             "encoding (HTML entity encoding, URL encoding, etc.). "
+                             "Use a Content-Security-Policy header as defense-in-depth.",
+        )
 
     def _check_ssti(self) -> None:
         """Check for Server-Side Template Injection."""

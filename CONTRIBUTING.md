@@ -34,8 +34,7 @@ All contributors are expected to:
 - Focus on what is best for the community
 
 Unacceptable behavior will not be tolerated and may result in temporary or permanent
-exclusion from the project. Reports can be sent to
-[sentinel-security@example.com](mailto:sentinel-security@example.com).
+exclusion from the project. Reports should be filed via GitHub Issues (not security-related) or via the security advisory process for vulnerabilities.
 
 Read the full text in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
@@ -43,16 +42,19 @@ Read the full text in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ### Development Setup
 
-Sentinel requires **Python 3.8+** and has **zero external dependencies** — it uses only the Python standard library. There's no virtual environment or dependency installation needed for development.
+Sentinel requires **Python 3.8+** and has only **3 lightweight runtime dependencies** (pathspec, packaging, tqdm).
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-org/sentinel.git
 cd sentinel
 
-# (Optional) Create a virtual environment for isolated development
+# Create a virtual environment for development
 python3 -m venv venv
 source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 
 # Run the tests to verify your setup
 python -m unittest discover tests -v
@@ -144,7 +146,7 @@ Before submitting, ensure:
 - [ ] Tests pass (`python -m unittest discover tests -v`)
 - [ ] For new scanners: tested against `test_repo` or a sample repository
 - [ ] For output format changes: validated against the official SARIF schema (`python scripts/validate_sarif.py <file>`)
-- [ ] No new external dependencies added (Sentinel is dependency-free!)
+- [ ] No new external runtime dependencies added (Sentinel uses only 3 packages: pathspec, packaging, tqdm)
 - [ ] Code follows existing style and patterns
 - [ ] README updated if user-facing behavior changed
 - [ ] No `print()` debugging statements left behind
@@ -157,7 +159,7 @@ Before submitting, ensure:
 - **Follow existing patterns** — the codebase is small; read similar files before writing new ones
 - **Type hints** — annotate all function signatures and public methods
 - **Docstrings** — use Google-style docstrings for public functions
-- **No external dependencies** — use only the Python standard library
+- **Minimal external dependencies** — use only pathspec, packaging, tqdm (keep it lean)
 - **Error handling** — use `try`/`except` with specific exception types, not bare `except:`
 - **File naming** — use `snake_case.py` without abbreviations (e.g., `json_formatter.py` not `json_fmt.py`)
 

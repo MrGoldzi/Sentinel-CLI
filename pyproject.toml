@@ -31,9 +31,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sentinel-security/sentinel"
-Repository = "https://github.com/sentinel-security/sentinel"
-Documentation = "https://github.com/sentinel-security/sentinel#readme"
+Homepage = "https://github.com/your-org/sentinel"
+Repository = "https://github.com/your-org/sentinel"
+Documentation = "https://github.com/your-org/sentinel#readme"
 
 [project.scripts]
 sentinel = "sentinel.main:main"

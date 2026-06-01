@@ -56,7 +56,7 @@ TEXT_EXTS: Set[str] = SOURCE_EXTS | {
 }
 
 
-_DEFAULT_SPEC = pathspec.PathSpec.from_lines("gitwildmatch", [])
+_DEFAULT_SPEC = pathspec.PathSpec.from_lines("gitignore", [])
 
 
 def _load_gitignore(repo_root: str) -> pathspec.PathSpec:
@@ -67,7 +67,7 @@ def _load_gitignore(repo_root: str) -> pathspec.PathSpec:
     gitignore_path = os.path.join(repo_root, ".gitignore")
     try:
         with open(gitignore_path, "r", encoding="utf-8", errors="replace") as f:
-            spec = pathspec.PathSpec.from_lines("gitwildmatch", f)
+            spec = pathspec.PathSpec.from_lines("gitignore", f)
         return spec
     except (FileNotFoundError, IOError, OSError):
         return _DEFAULT_SPEC
@@ -77,7 +77,7 @@ def _load_pattern_spec(patterns: List[str]) -> pathspec.PathSpec:
     """Build a PathSpec from a list of gitignore-style patterns."""
     if not patterns:
         return _DEFAULT_SPEC
-    return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    return pathspec.PathSpec.from_lines("gitignore", patterns)
 
 
 def is_binary_file(file_path: str) -> bool:

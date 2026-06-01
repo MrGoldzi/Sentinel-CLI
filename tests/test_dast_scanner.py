@@ -142,6 +142,14 @@ class TestConstants(unittest.TestCase):
 
     def test_xss_payloads_nonempty(self):
         self.assertGreater(len(XSS_PAYLOADS), 0)
+        # New structured format: each payload has payload, context, description
+        for entry in XSS_PAYLOADS:
+            self.assertIn("payload", entry)
+            self.assertIn("context", entry)
+            self.assertIn("description", entry)
+            self.assertIsInstance(entry["payload"], str)
+            self.assertIsInstance(entry["context"], str)
+            self.assertIsInstance(entry["description"], str)
 
     def test_security_headers_has_expected_keys(self):
         expected = {

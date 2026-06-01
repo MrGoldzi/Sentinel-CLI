@@ -658,6 +658,9 @@ def scan_file(file_path: str, repo_root: str) -> List[Finding]:
 
             entropy, entropy_conf = entropy_scan(value, var_name)
             if entropy_conf >= 0.4:
+                # Check whitelist before creating entropy finding
+                if is_whitelisted(value):
+                    continue
                 suffix = " (high entropy)" if entropy >= 4.0 else ""
                 finding = Finding(
                     file_path=rel_path,

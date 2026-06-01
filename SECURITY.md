@@ -17,19 +17,14 @@ privately — **do not file a public GitHub issue**.
 
 ### How to Report
 
-You can report vulnerabilities through either of the following methods:
+Please report vulnerabilities through GitHub's built-in **Private vulnerability reporting** feature:
 
-#### Option 1: GitHub Security Advisory (Recommended)
-
-Use GitHub's private vulnerability reporting form:
-
-[https://github.com/sentinel/security/advisories/new](https://github.com/your-org/sentinel/security/advisories/new)
+[https://github.com/your-org/sentinel/security/advisories/new](https://github.com/your-org/sentinel/security/advisories/new)
 
 This creates a private draft advisory that only the repository maintainers can see.
 No account setup required beyond your existing GitHub account.
 
-
-> **Note:** The GitHub URL requires **Private vulnerability reporting** to be enabled in the repository settings (under **Settings → Code security**). If the page doesn't load, please use the email method instead.
+> **Note:** Private vulnerability reporting must be enabled in the repository settings (under **Settings → Code security & analysis**).
 
 ### What to Expect
 

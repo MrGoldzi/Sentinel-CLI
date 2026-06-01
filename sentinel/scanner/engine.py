@@ -14,6 +14,7 @@ Architecture:
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 import time
 from typing import Callable, Dict, List, Optional, Tuple
@@ -41,8 +42,8 @@ def _scan_secrets_batch(
     for rel_path, full_path in file_paths:
         try:
             findings.extend(secrets_scanner.scan_file(full_path, repo_root))
-        except Exception:
-            pass
+        except (IOError, OSError, UnicodeDecodeError, ValueError):
+            continue
     return findings
 
 
@@ -55,8 +56,8 @@ def _scan_static_analysis_batch(
     for rel_path, full_path in file_paths:
         try:
             findings.extend(static_analysis.scan_file(full_path, repo_root))
-        except Exception:
-            pass
+        except (IOError, OSError, UnicodeDecodeError, ValueError):
+            continue
     return findings
 
 
@@ -117,8 +118,10 @@ def scan_repository(
     dep_findings: List[Finding] = []
     try:
         dep_findings = dependency_scanner.scan(repo_root, online=online)
+    except (IOError, OSError, json.JSONDecodeError, ValueError):
+        dep_findings = []
     except Exception:
-        pass
+        dep_findings = []
     scanner_times["dependency_scan"] = (time.time() - t0) * 1000
 
     # ├── Determine which files to scan for secrets and static analysis
@@ -185,19 +188,19 @@ def scan_repository(
                                 secret_findings.extend(result)
                             else:
                                 static_findings.extend(result)
-                        except Exception:
+                        except (IOError, OSError, ValueError, TypeError):
                             pass
                         pbar.update(1)
             else:
                 for future in concurrent.futures.as_completed(secrets_futures):
                     try:
                         secret_findings.extend(future.result())
-                    except Exception:
+                    except (IOError, OSError, ValueError, TypeError):
                         pass
                 for future in concurrent.futures.as_completed(static_futures):
                     try:
                         static_findings.extend(future.result())
-                    except Exception:
+                    except (IOError, OSError, ValueError, TypeError):
                         pass
         scanner_times["parallel_scan"] = (time.time() - t_scan_start) * 1000
     else:
@@ -212,8 +215,8 @@ def scan_repository(
             try:
                 secret_findings.extend(secrets_scanner.scan_file(full_path, repo_root))
                 static_findings.extend(static_analysis.scan_file(full_path, repo_root))
-            except Exception:
-                pass
+            except (IOError, OSError, UnicodeDecodeError, ValueError):
+                continue
         scanner_times["sequential_scan"] = (time.time() - t_scan_start) * 1000
 
     # ─── Aggregator: dedup + normalize ─────────────────────────────────

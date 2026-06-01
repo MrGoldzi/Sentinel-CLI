@@ -13,19 +13,19 @@
 
 ---
 
-**Scan Git repositories and web applications for secrets, vulnerable dependencies, insecure code, and OWASP Top 10 vulnerabilities and more, completely offline, fully deterministic, minimal dependencies.**
+**Scan Git repositories and web applications for secrets, vulnerable dependencies, insecure code, and OWASP Top 10 vulnerabilities and more — offline-first, fully deterministic, minimal dependencies.**
 
 </div>
 
 ## Features
 
 - ** Secrets Scanner** — Detects API keys, tokens, JWTs, AWS credentials, private keys, database connection strings, and more using regex pattern matching
-- ** Dependency Scanner** — Parses `requirements.txt` (with basic Pipfile support) and checks package versions against a built-in mock vulnerability database
+- ** Dependency Scanner** — Parses `requirements.txt` (with basic Pipfile support) and checks package versions against a built-in vulnerability database with real CVE entries
 - ** Static Analysis** — Detects insecure patterns: `eval()`, `exec()`, `os.system()`, unsafe `subprocess`, `pickle` deserialization, SQL injection, and more across 9+ languages
 - ** Decision Engine** — Configurable severity thresholds (LOW/MEDIUM/HIGH/CRITICAL) with clear exit codes for CI/CD integration
 - ** Three Output Formats** — Human-readable terminal output, machine-readable JSON, and **SARIF v2.1.0** for GitHub Advanced Security
 - ** Minimal Dependencies** — Only 3 lightweight packages (`pathspec`, `packaging`, `tqdm`)
-- ** Fully Offline** — No network calls, no cloud services, no data exfiltration
+- ** Fully Offline by default** — No network calls by default; optional `--online` flag queries the OSV API for up-to-date vulnerability data
 - ** Test Repository** — Includes a sample repo with intentional vulnerabilities for testing
 - ** DAST Test Server** — Includes an intentionally vulnerable HTTP server at `test_servers/vulnerable_server.py` for DAST testing
 
@@ -35,10 +35,12 @@
 | Feature | Sentinel | Other Tools |
 |---------|----------|-------------|
 | Dependencies | **3 lightweight packages** | Often require npm, Docker, or cloud services |
-| Network | **None — fully offline** | Many phone home or require API keys |
+| Network | **Offline-first (no network by default)** | Many phone home or require API keys |
+| Online Mode | **Optional via `--online` flag** | Often always require network |
 | Deterministic | **Yes — regex + static analysis** | Often use ML/heuristics with variable results |
 | CI/CD Ready | **Exit codes + SARIF + JSON** | Varies widely |
 | Complexity | **One CLI command** | Often complex configuration required |
+| **Accuracy** | **Passive, deterministic analysis** | Often use active exploitation or heuristic models |
 
 Sentinel is ideal for:
 - **CI/CD pipelines** where you want fast, deterministic security checks without pulling in heavy dependencies
@@ -113,7 +115,7 @@ sentinel scan /path/to/repo   # now works from anywhere
 
 ### Dependencies
 
-Sentinel uses **3 lightweight packages**:
+Sentinel depends on **3 lightweight runtime packages**:
 
 | Package | Purpose |
 |---------|---------|
@@ -272,7 +274,7 @@ The SARIF output has been validated against the **official OASIS SARIF v2.1.0 JS
         "driver": {
           "name": "Sentinel",
           "version": "0.2.0",
-          "informationUri": "https://github.com/sentinel-security/sentinel",
+          "informationUri": "https://github.com/your-org/sentinel",
           "rules": [
             {
               "id": "SEC-aws-access-key",
@@ -680,10 +682,10 @@ sentinel/
 
 - **Deterministic only** — No heuristic or ML-based detection
 - **Regex-based secrets scanning** — May produce false positives and false negatives
-- **DAST is inference-based** — Detects vulnerabilities through observation, not exploitation; may miss some issues
-- **Mock vulnerability database** — Not a comprehensive CVE database; use for testing/demo
-- **Fully offline** — No network calls by design
+- **DAST is inference-based** — Detects vulnerabilities through observation, not exploitation; findings are validated across multiple payloads to minimize false positives
+- **Built-in vulnerability database** — Covers 15 popular Python packages; use `--online` for comprehensive OSV API access
 - **Limited language support** — Static analysis focuses primarily on Python patterns
+- **Vulnerability database** — Built-in database covers 15 popular packages; use `--online` for comprehensive OSV API coverage
 - **Basic Pipfile support** — Pipfile parsing is simplified
 - **Binary file scanning via `--all`** — Binary files can contain secrets, but snippets may appear garbled
   (use `--all` to scan binaries, but expect less readable output)
@@ -697,7 +699,7 @@ sentinel/
 - [**GitLeaks**](https://github.com/gitleaks/gitleaks) — Go-based secrets scanner
 
 Sentinel differentiates itself by being:
-- **Minimal dependencies** — Only 3 lightweight packages, no npm, no Docker
+- **Minimal dependencies** — Only 3 lightweight runtime packages, no npm, no Docker
 - **Fully deterministic** — Same input always produces the same output
 - **Simple codebase** — Easy to understand, modify, and contribute to
 - **Multi-format output** — Human, JSON, and SARIF out of the box
