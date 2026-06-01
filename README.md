@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/icon.png" alt="Sentinel Logo" width="228" />
+<img src="assets/icon.png" alt="Sentinel Logo" width="258" />
 
 # 
 
